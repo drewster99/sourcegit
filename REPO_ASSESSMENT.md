@@ -38,9 +38,9 @@ These match the boilerplate example in [Avalonia's macOS deployment docs](https:
 
 | Entitlement | Why CoreCLR apps use it | Needed here? |
 |---|---|---|
-| `allow-jit` | The JIT emits code at runtime | **Probably not.** Release builds are NativeAOT (`PublishAot=true`); the bundle contains no `libcoreclr.dylib` or managed DLLs |
-| `allow-unsigned-executable-memory` | Older or x64 CoreCLR writable+executable memory | **Probably not**, for the same reason |
-| `disable-library-validation` | Load dylibs signed by another team (e.g. NuGet native libs) | **Probably not.** All dylibs are re-signed with the same Team ID |
+| `allow-jit` | The JIT emits code at runtime | **No (tested).** Release builds are NativeAOT (`PublishAot=true`); the bundle contains no `libcoreclr.dylib` or managed DLLs |
+| `allow-unsigned-executable-memory` | Older or x64 CoreCLR writable+executable memory | **No (tested)**, for the same reason |
+| `disable-library-validation` | Load dylibs signed by another team (e.g. NuGet native libs) | **No (tested).** All dylibs are re-signed with the same Team ID |
 
 No runtime code generation was found: regexes use `[GeneratedRegex]`, Oniguruma is an interpreter, and Skia does not JIT.
 
@@ -48,7 +48,16 @@ No runtime code generation was found: regexes use `[GeneratedRegex]`, Oniguruma 
 - `disable-library-validation` lets an unsigned or foreign dylib load into a notarized process.
 - The two memory entitlements weaken the W^X protection that hardens memory-corruption bugs, e.g. in the image decoders.
 
-**Unverified:** that the app runs without them. To test: re-sign with hardened runtime and an empty entitlements file, then exercise the repo view, diffs, image diffs, and syntax highlighting.
+**Tested 2026-10-19: none of the three are needed.**
+- The upstream `v2026.22` arm64 app was re-signed inside-out with hardened runtime, a secure timestamp, and **no entitlements**: dylibs, then `setsid`, then the main binary, then the bundle. The signer was a separate Developer ID, so all binaries shared one Team ID.
+- Then exercised:
+  - repo view and history
+  - text diffs
+  - syntax highlighting (off by default; turning it on loads `libonigwrap.dylib`)
+  - SSH fetch and pull (runs the bundled `setsid` and the askpass prompt)
+- `lsof` confirmed all 4 bundled dylibs loaded under library validation: `libAvaloniaNative`, `libSkiaSharp`, `libHarfBuzzSharp`, `libonigwrap`.
+- There were no crash reports in `~/Library/Logs/DiagnosticReports` and no code-signing (AMFI) errors in the system log.
+- Not exercised: image diffs of TIFF and DDS files, which use managed decoders and no native code, and the AI feature.
 
 ### Recommendation
 Prefer **building from source**, or use the **upstream zip** (`xattr -dr com.apple.quarantine SourceGit.app`). If building, sign with your own Developer ID. Ad-hoc signing breaks macOS Local Network permission tracking (see issue #2752). Use Homebrew only if you accept trusting the third-party signer for future releases.
@@ -167,7 +176,7 @@ Like any git GUI, SourceGit runs your `git`, which honors the repo's `.git/confi
 
 ## 6. Recommendations
 
-1. Build from source and sign with your own Developer ID, or use the upstream zip. Avoid the Homebrew cask unless you accept the third-party signer.
+1. Build from source and sign with your own Developer ID, or use the upstream zip. Avoid the Homebrew cask unless you accept the third-party signer. When signing, use hardened runtime with **no entitlements** (see §1).
 2. Pin to a reviewed version, and re-assess after the maintainer handover.
 3. Do not configure the AI feature until API keys move to the Keychain.
 4. Be aware that avatars leak author email hashes to Gravatar. A local patch would be needed to disable this.
