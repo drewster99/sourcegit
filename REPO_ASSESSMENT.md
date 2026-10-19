@@ -114,17 +114,22 @@ There is no telemetry, analytics, or crash reporting.
 
 Threat model: a malicious repository or remote.
 
-### 4.1 Argument quoting does not escape backslashes (medium–high; found by code review, not executed)
+### 4.1 Argument quoting corrupts filenames containing backslashes (low–medium; confirmed by test)
 - `src/App.Extensions.cs:12-20`: `Quoted()` wraps the value in `"…"` and escapes only `"`, not `\`.
-- `ProcessStartInfo.Arguments` is split using Windows/MSVC rules on all platforms. A value containing `\"` becomes `\\"`, which parses as a literal backslash followed by a closing quote. The rest of the value then becomes separate arguments.
-- File names may contain `\`, `"`, and spaces on macOS and Linux.
-- **Exposed call sites** (path placed with no `--` end-of-options marker before it):
+- `ProcessStartInfo.Arguments` is a single string that .NET re-parses into argv using MSVC-style rules on all platforms, where a backslash before a quote is significant. Because `Quoted()` does not escape backslashes, a value ending in `\` or containing `\"` round-trips to a **different** string.
+- **Confirmed** with a benign round-trip test (`tools/quote-roundtrip-test/`, run against .NET's real parser; no git, no payload):
+  - input `trailing\` → `Quoted` emits `"trailing\"` → parses back to `trailing"`
+  - input `a\"b.txt` → `Quoted` emits `"a\\"b.txt"` → parses back to `a\b.txt`
+  - plain names, spaces, and a lone embedded quote round-trip correctly.
+- **Impact:** this is a data-integrity / robustness bug. A file whose name ends in a backslash (legal on macOS and Linux) is passed to git as the wrong path, so the operation targets the wrong file or fails. On two-argument commands such as `Move` (`mv -v {old} {new}`), a trailing-backslash first path can consume the second path.
+- **Exposed call sites** (filename placed last, after `{rev}:`, with no `--`):
   - `src/Commands/QueryFileContent.cs:15`: `show {rev}:{file}`
   - `src/Commands/SaveRevisionFile.cs:24`: `show {rev}:{file}`
   - `src/Commands/QueryFileSize.cs:11`: `cat-file -s {rev}:{file}`
-- **Trigger:** viewing or saving a file from a hostile repo's history. Injected tokens are read as `git show` options (e.g. `--output=<path>`).
-- Most other path-taking commands put `--` before paths, which limits injected tokens to pathspecs.
-- Not confirmed at runtime because the .NET SDK was not installed during the assessment. **Not yet reported upstream.**
+- **Correction to an earlier draft of this document:** the first version claimed injected tokens would be parsed as attacker-chosen `git` **options** (option injection). That was not demonstrated and appears **not** to hold at these sinks: the filename is the last token in the string and `Quoted()`'s closing `"` is always last, so breaking the quote leaves the argument unterminated/corrupted with nothing after it to become an injected option. The proven effect is corruption, not option injection.
+- **Trigger:** viewing or saving a maliciously-named file from a hostile repo's history. Requires user interaction.
+- **Not yet reported upstream.**
+- **Fix:** switch these commands to `ProcessStartInfo.ArgumentList` (each argument passed as its own argv entry, which removes the whole class of problem), or, as a minimum, escape backslashes in `Quoted()`.
 
 ### 4.2 Custom-action placeholders are substituted unquoted (low)
 - `src/ViewModels/ExecuteCustomAction.cs:236-257`: `${FILE}`, `${BRANCH}`, and `${TAG}` are inserted raw into the argument string.
@@ -180,7 +185,7 @@ Like any git GUI, SourceGit runs your `git`, which honors the repo's `.git/confi
 2. Pin to a reviewed version, and re-assess after the maintainer handover.
 3. Do not configure the AI feature until API keys move to the Keychain.
 4. Be aware that avatars leak author email hashes to Gravatar. A local patch would be needed to disable this.
-5. Confirm finding 4.1 with a .NET harness, then report it upstream. There is no security policy, so the report would have to be a public issue or PR. Fix: escape backslashes per MSVC rules, or use `ProcessStartInfo.ArgumentList`; and add `--` before paths.
+5. Finding 4.1 confirmed with the round-trip test in `tools/quote-roundtrip-test/`. Report it upstream. There is no security policy, so the report would have to be a public issue or PR. Fix: use `ProcessStartInfo.ArgumentList`, or escape backslashes in `Quoted()`.
 6. Keep auto-fetch off.
 
 ## 7. Method
