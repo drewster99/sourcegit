@@ -219,9 +219,11 @@ namespace SourceGit.ViewModels
                 try
                 {
                     await File.WriteAllTextAsync(tmpPath, builder.ToString(), _outputEncoding);
-                    File.Move(tmpPath, fullPath, true);
+                    // Apply the original mode to the temp file BEFORE the replace, so the
+                    // file has correct permissions atomically at the rename.
                     if (!OperatingSystem.IsWindows() && mode is { } m)
-                        File.SetUnixFileMode(fullPath, m);
+                        File.SetUnixFileMode(tmpPath, m);
+                    File.Move(tmpPath, fullPath, true);
                 }
                 catch
                 {

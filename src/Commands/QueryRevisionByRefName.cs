@@ -8,7 +8,7 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
-            Args = $"rev-parse {refname}";
+            Args = $"rev-parse {RequireSafeGitOperand(refname, nameof(refname))}";
         }
 
         public string GetResult()

@@ -162,6 +162,10 @@ internal static class Program
         Check(ThrowsAsync(() => new SourceGit.Commands.Worktree("/repo").AddWithLocalBranchAsync("/tmp/wt", dash)), "H1 Worktree rejects option-looking branch");
         Check(Throws(() => new SourceGit.Commands.MergeTree("/repo", dash, "main")), "H1 MergeTree rejects option-looking source");
         Check(Throws(() => new SourceGit.Commands.MergeBase("/repo", dash, "main")), "H1 MergeBase rejects option-looking rev");
+        Check(Throws(() => new SourceGit.Commands.QuerySingleCommit("/repo", "--output=/tmp/x")), "H1 QuerySingleCommit rejects --output= injection");
+        Check(Throws(() => new SourceGit.Commands.QueryRevisionByRefName("/repo", dash)), "H1 QueryRevisionByRefName rejects option-looking ref");
+        Check(Throws(() => new SourceGit.Commands.CompareRevisions("/repo", dash, "HEAD")), "H1 CompareRevisions rejects option-looking start");
+        Check(Throws(() => new SourceGit.Commands.Replay("/repo", dash, "a..b")), "H1 Replay rejects option-looking onto");
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0

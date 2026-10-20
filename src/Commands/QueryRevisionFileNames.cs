@@ -10,7 +10,7 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
-            Args = $"ls-tree -r --name-only {revision}";
+            Args = $"ls-tree -r --name-only {RequireSafeGitOperand(revision, nameof(revision))}";
         }
 
         public async Task<List<string>> GetResultAsync()

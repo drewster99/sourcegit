@@ -11,7 +11,7 @@ namespace SourceGit.Commands
 
             const string baseArgs = "show --no-show-signature --format=%G?%n%GS%n%GK -s";
             const string fakeSignersFileArg = "-c gpg.ssh.allowedSignersFile=/dev/null";
-            Args = $"{(useFakeSignersFile ? fakeSignersFileArg : string.Empty)} {baseArgs} {sha}";
+            Args = $"{(useFakeSignersFile ? fakeSignersFileArg : string.Empty)} {baseArgs} {RequireSafeGitOperand(sha, nameof(sha))}";
         }
 
         public async Task<Models.CommitSignInfo> GetResultAsync()
