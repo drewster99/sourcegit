@@ -56,21 +56,21 @@ namespace SourceGit.ViewModels
 
         public void AppendLine(string line = null)
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            // Called from the git stdout/stderr pump threads, potentially thousands of
+            // times per command. Buffer the lines and flush them to the UI thread in
+            // batches via a single Post, instead of a blocking Invoke per line (which
+            // round-trips through — and stalls — the pump thread and floods the UI).
+            var newline = line ?? string.Empty;
+            bool scheduleFlush;
+            lock (_pendingLock)
             {
-                Dispatcher.UIThread.Invoke(() => AppendLine(line));
+                _pending.Add(newline);
+                scheduleFlush = !_flushScheduled;
+                _flushScheduled = true;
             }
-            else
-            {
-                var newline = line ?? string.Empty;
-                if (_builder != null)
-                    _builder.AppendLine(newline);
-                else
-                    _content = $"{_content}{newline}\n";
 
-                foreach (var receiver in _receivers)
-                    receiver.OnReceiveCommandLog(newline);
-            }
+            if (scheduleFlush)
+                Dispatcher.UIThread.Post(Flush);
         }
 
         public void Complete()
@@ -80,6 +80,8 @@ namespace SourceGit.ViewModels
                 Dispatcher.UIThread.Invoke(Complete);
                 return;
             }
+
+            Flush();
 
             IsComplete = true;
             EndTime = DateTime.Now;
@@ -92,8 +94,38 @@ namespace SourceGit.ViewModels
             OnPropertyChanged(nameof(IsComplete));
         }
 
+        // Runs on the UI thread (via Post, or synchronously from Complete) and drains the
+        // buffered lines into the log and its receivers.
+        private void Flush()
+        {
+            List<string> batch;
+            lock (_pendingLock)
+            {
+                _flushScheduled = false;
+                if (_pending.Count == 0)
+                    return;
+
+                batch = _pending;
+                _pending = new List<string>();
+            }
+
+            foreach (var newline in batch)
+            {
+                if (_builder != null)
+                    _builder.AppendLine(newline);
+                else
+                    _content = $"{_content}{newline}\n";
+
+                foreach (var receiver in _receivers)
+                    receiver.OnReceiveCommandLog(newline);
+            }
+        }
+
         private string _content = string.Empty;
         private StringBuilder _builder = new StringBuilder();
         private List<Models.ICommandLogReceiver> _receivers = new List<Models.ICommandLogReceiver>();
+        private List<string> _pending = new List<string>();
+        private readonly object _pendingLock = new object();
+        private bool _flushScheduled = false;
     }
 }

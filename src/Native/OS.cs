@@ -168,28 +168,38 @@ namespace SourceGit.Native
             if (ex == null)
                 return;
 
-            var crashDir = Path.Combine(BasicDirectories.CacheDir, "crashes");
-            if (!Directory.Exists(crashDir))
-                Directory.CreateDirectory(crashDir);
+            // This is the global unhandled-exception handler, so it must never throw
+            // (that would mask the original crash). A millisecond + pid suffix keeps two
+            // crashes in the same second from overwriting each other's log.
+            try
+            {
+                var crashDir = Path.Combine(BasicDirectories.CacheDir, "crashes");
+                if (!Directory.Exists(crashDir))
+                    Directory.CreateDirectory(crashDir);
 
-            var time = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-            var file = Path.Combine(crashDir, $"{time}.log");
-            using var writer = new StreamWriter(file);
-            writer.WriteLine($"Crash::: {ex.GetType().FullName}: {ex.Message}");
-            writer.WriteLine();
-            writer.WriteLine("----------------------------");
-            writer.WriteLine($"Version: {Assembly.GetExecutingAssembly().GetName().Version}");
-            writer.WriteLine($"OS: {Environment.OSVersion}");
-            writer.WriteLine($"Framework: {AppDomain.CurrentDomain.SetupInformation.TargetFrameworkName}");
-            writer.WriteLine($"Source: {ex.Source}");
-            writer.WriteLine($"Thread Name: {Thread.CurrentThread.Name ?? "Unnamed"}");
-            writer.WriteLine($"App Start Time: {Process.GetCurrentProcess().StartTime}");
-            writer.WriteLine($"Exception Time: {DateTime.Now}");
-            writer.WriteLine($"Memory Usage: {Process.GetCurrentProcess().PrivateMemorySize64 / 1024 / 1024} MB");
-            writer.WriteLine("----------------------------");
-            writer.WriteLine();
-            writer.WriteLine(ex);
-            writer.Flush();
+                var time = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff");
+                var file = Path.Combine(crashDir, $"{time}_{Environment.ProcessId}.log");
+                using var writer = new StreamWriter(file);
+                writer.WriteLine($"Crash::: {ex.GetType().FullName}: {ex.Message}");
+                writer.WriteLine();
+                writer.WriteLine("----------------------------");
+                writer.WriteLine($"Version: {Assembly.GetExecutingAssembly().GetName().Version}");
+                writer.WriteLine($"OS: {Environment.OSVersion}");
+                writer.WriteLine($"Framework: {AppDomain.CurrentDomain.SetupInformation.TargetFrameworkName}");
+                writer.WriteLine($"Source: {ex.Source}");
+                writer.WriteLine($"Thread Name: {Thread.CurrentThread.Name ?? "Unnamed"}");
+                writer.WriteLine($"App Start Time: {Process.GetCurrentProcess().StartTime}");
+                writer.WriteLine($"Exception Time: {DateTime.Now}");
+                writer.WriteLine($"Memory Usage: {Process.GetCurrentProcess().PrivateMemorySize64 / 1024 / 1024} MB");
+                writer.WriteLine("----------------------------");
+                writer.WriteLine();
+                writer.WriteLine(ex);
+                writer.Flush();
+            }
+            catch
+            {
+                // Never let crash logging throw.
+            }
         }
 
         public static string FindGitExecutable()
@@ -205,7 +215,7 @@ namespace SourceGit.Native
         public static void SetShellOrTerminal(Models.ShellOrTerminal shell)
         {
             ShellOrTerminal = shell != null ? _backend.FindTerminal(shell) : string.Empty;
-            ShellOrTerminalArgs = shell.Args;
+            ShellOrTerminalArgs = shell?.Args ?? string.Empty;
         }
 
         public static Models.DiffMergeTool GetDiffMergeTool(bool onlyDiff)

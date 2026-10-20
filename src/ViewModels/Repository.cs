@@ -463,7 +463,18 @@ namespace SourceGit.ViewModels
         {
             var commitMessage = _workingCopy.CommitMessage;
             if (!string.IsNullOrEmpty(commitMessage) && _workingCopy.InProgressContext != null)
-                File.WriteAllText(Path.Combine(GitDir, "MERGE_MSG"), commitMessage);
+            {
+                // Best-effort: a failure here (GitDir gone/relocated) must not abort Close
+                // and leak the cancellation sources / auto-fetch timer below.
+                try
+                {
+                    File.WriteAllText(Path.Combine(GitDir, "MERGE_MSG"), commitMessage);
+                }
+                catch
+                {
+                    // Ignore; teardown continues.
+                }
+            }
 
             _uiStates.LastCommitMessage = commitMessage;
             _uiStates.Save();
@@ -1133,11 +1144,13 @@ namespace SourceGit.ViewModels
 
         public void RefreshBranches()
         {
-            if (_cancellationRefreshBranches is { IsCancellationRequested: false })
-                _cancellationRefreshBranches.Cancel();
-
-            _cancellationRefreshBranches = new CancellationTokenSource();
-            var token = _cancellationRefreshBranches.Token;
+            // Atomic swap so a refresh triggered from the file watcher thread
+            // and one from the UI thread cannot leave an in-flight source
+            // uncancelled (stale results overwriting newer data).
+            var newCts = new CancellationTokenSource();
+            var oldCts = System.Threading.Interlocked.Exchange(ref _cancellationRefreshBranches, newCts);
+            oldCts?.Cancel();
+            var token = newCts.Token;
 
             Task.Run(async () =>
             {
@@ -1187,11 +1200,13 @@ namespace SourceGit.ViewModels
 
         public void RefreshTags()
         {
-            if (_cancellationRefreshTags is { IsCancellationRequested: false })
-                _cancellationRefreshTags.Cancel();
-
-            _cancellationRefreshTags = new CancellationTokenSource();
-            var token = _cancellationRefreshTags.Token;
+            // Atomic swap so a refresh triggered from the file watcher thread
+            // and one from the UI thread cannot leave an in-flight source
+            // uncancelled (stale results overwriting newer data).
+            var newCts = new CancellationTokenSource();
+            var oldCts = System.Threading.Interlocked.Exchange(ref _cancellationRefreshTags, newCts);
+            oldCts?.Cancel();
+            var token = newCts.Token;
 
             Task.Run(async () =>
             {
@@ -1210,11 +1225,13 @@ namespace SourceGit.ViewModels
 
         public void RefreshCommits()
         {
-            if (_cancellationRefreshCommits is { IsCancellationRequested: false })
-                _cancellationRefreshCommits.Cancel();
-
-            _cancellationRefreshCommits = new CancellationTokenSource();
-            var token = _cancellationRefreshCommits.Token;
+            // Atomic swap so a refresh triggered from the file watcher thread
+            // and one from the UI thread cannot leave an in-flight source
+            // uncancelled (stale results overwriting newer data).
+            var newCts = new CancellationTokenSource();
+            var oldCts = System.Threading.Interlocked.Exchange(ref _cancellationRefreshCommits, newCts);
+            oldCts?.Cancel();
+            var token = newCts.Token;
 
             Task.Run(async () =>
             {
@@ -1323,11 +1340,13 @@ namespace SourceGit.ViewModels
             if (IsBare)
                 return;
 
-            if (_cancellationRefreshWorkingCopyChanges is { IsCancellationRequested: false })
-                _cancellationRefreshWorkingCopyChanges.Cancel();
-
-            _cancellationRefreshWorkingCopyChanges = new CancellationTokenSource();
-            var token = _cancellationRefreshWorkingCopyChanges.Token;
+            // Atomic swap so a refresh triggered from the file watcher thread
+            // and one from the UI thread cannot leave an in-flight source
+            // uncancelled (stale results overwriting newer data).
+            var newCts = new CancellationTokenSource();
+            var oldCts = System.Threading.Interlocked.Exchange(ref _cancellationRefreshWorkingCopyChanges, newCts);
+            oldCts?.Cancel();
+            var token = newCts.Token;
             var noOptionalLocks = Interlocked.Add(ref _queryLocalChangesTimes, 1) > 1;
 
             Task.Run(async () =>
@@ -1357,11 +1376,13 @@ namespace SourceGit.ViewModels
             if (IsBare)
                 return;
 
-            if (_cancellationRefreshStashes is { IsCancellationRequested: false })
-                _cancellationRefreshStashes.Cancel();
-
-            _cancellationRefreshStashes = new CancellationTokenSource();
-            var token = _cancellationRefreshStashes.Token;
+            // Atomic swap so a refresh triggered from the file watcher thread
+            // and one from the UI thread cannot leave an in-flight source
+            // uncancelled (stale results overwriting newer data).
+            var newCts = new CancellationTokenSource();
+            var oldCts = System.Threading.Interlocked.Exchange(ref _cancellationRefreshStashes, newCts);
+            oldCts?.Cancel();
+            var token = newCts.Token;
 
             Task.Run(async () =>
             {

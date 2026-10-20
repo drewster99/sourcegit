@@ -90,7 +90,11 @@ namespace SourceGit.ViewModels
                         foundResponse = true;
                     }
 
-                    Dispatcher.UIThread.Post(() => Text = builder.ToString());
+                    // The callback runs on the AI/network thread; snapshot the text here
+                    // and post the captured value, so the UI thread never reads the
+                    // StringBuilder while this thread is appending to it.
+                    var snapshot = builder.ToString();
+                    Dispatcher.UIThread.Post(() => Text = snapshot);
                 }, _cancel.Token);
 
                 Response = responseBuilder.ToString().Trim();

@@ -39,7 +39,7 @@ namespace SourceGit.Commands
 
         public async Task<bool> ExecAsync()
         {
-            Log?.AppendLine($"$ git {Args}\n");
+            Log?.AppendLine($"$ git {RedactCredentials(Args)}\n");
 
             // stdout and stderr are pumped on separate threads, so this is appended from
             // both OutputDataReceived and ErrorDataReceived concurrently; use a
@@ -53,6 +53,7 @@ namespace SourceGit.Commands
 
             var captured = new CapturedProcess() { Process = proc };
             var capturedLock = new object();
+            var registration = default(CancellationTokenRegistration);
             try
             {
                 proc.Start();
@@ -60,7 +61,10 @@ namespace SourceGit.Commands
                 // Not safe, please only use `CancellationToken` in readonly commands.
                 if (CancellationToken.CanBeCanceled)
                 {
-                    CancellationToken.Register(() =>
+                    // Keep the registration so it can be disposed once the process exits;
+                    // otherwise registrations accumulate for the lifetime of a long-lived
+                    // or shared token.
+                    registration = CancellationToken.Register(() =>
                     {
                         lock (capturedLock)
                         {
@@ -96,6 +100,8 @@ namespace SourceGit.Commands
                 captured.Process = null;
             }
 
+            registration.Dispose();
+
             Log?.AppendLine(string.Empty);
 
             if (!CancellationToken.IsCancellationRequested && proc.ExitCode != 0)
@@ -128,8 +134,11 @@ namespace SourceGit.Commands
             }
 
             var rs = new Result() { IsSuccess = true };
+            // Drain stdout and stderr concurrently: reading one to the end before the
+            // other can deadlock if the child fills the second pipe's buffer first.
+            var stderrTask = Task.Run(proc.StandardError.ReadToEnd);
             rs.StdOut = proc.StandardOutput.ReadToEnd();
-            rs.StdErr = proc.StandardError.ReadToEnd();
+            rs.StdErr = stderrTask.GetAwaiter().GetResult();
             proc.WaitForExit();
 
             rs.IsSuccess = proc.ExitCode == 0;
@@ -151,8 +160,12 @@ namespace SourceGit.Commands
             }
 
             var rs = new Result() { IsSuccess = true };
-            rs.StdOut = await proc.StandardOutput.ReadToEndAsync(CancellationToken).ConfigureAwait(false);
-            rs.StdErr = await proc.StandardError.ReadToEndAsync(CancellationToken).ConfigureAwait(false);
+            // Start both reads before awaiting so stdout and stderr drain concurrently;
+            // awaiting one fully before starting the other can deadlock on a full pipe.
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync(CancellationToken);
+            var stderrTask = proc.StandardError.ReadToEndAsync(CancellationToken);
+            rs.StdOut = await stdoutTask.ConfigureAwait(false);
+            rs.StdErr = await stderrTask.ConfigureAwait(false);
             await proc.WaitForExitAsync(CancellationToken).ConfigureAwait(false);
 
             rs.IsSuccess = proc.ExitCode == 0;
@@ -288,12 +301,23 @@ namespace SourceGit.Commands
             return value;
         }
 
+        // Masks any userinfo (user or user:password) in a URL before it is written to the
+        // command log, which is shown in the UI and can be copied to the clipboard, so an
+        // embedded credential (e.g. https://user:token@host) is not disclosed.
+        internal static string RedactCredentials(string text)
+        {
+            if (string.IsNullOrEmpty(text) || !text.Contains("://", StringComparison.Ordinal))
+                return text;
+
+            return REG_URL_CREDENTIALS().Replace(text, "$1***@");
+        }
+
         private void HandleOutput(string line, ConcurrentQueue<string> errs)
         {
             if (line == null)
                 return;
 
-            Log?.AppendLine(line);
+            Log?.AppendLine(RedactCredentials(line));
 
             // Lines to hide in error message.
             if (line.Length > 0)
@@ -319,5 +343,8 @@ namespace SourceGit.Commands
 
         [GeneratedRegex(@"\d+%")]
         private static partial Regex REG_PROGRESS();
+
+        [GeneratedRegex(@"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@")]
+        private static partial Regex REG_URL_CREDENTIALS();
     }
 }
