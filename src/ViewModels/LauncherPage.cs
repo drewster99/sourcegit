@@ -101,8 +101,10 @@ namespace SourceGit.ViewModels
                     Native.OS.LogException(e);
 
                     // Surface the failure (e.g. a rejected unsafe git operand) to the user
-                    // instead of only writing a crash log, and let the popup close.
-                    Models.Notification.Send(null, e.Message, true);
+                    // instead of only writing a crash log, and let the popup close. Route to
+                    // THIS page (not the active one) so switching tabs during the await does
+                    // not send the error to the wrong tab.
+                    Models.Notification.Send(_node.Id, e.Message, true);
                     dump.Cleanup();
                     Popup = null;
                 }
