@@ -209,10 +209,19 @@ namespace SourceGit.ViewModels
                 // write can never leave the real file truncated with markers removed.
                 var fullPath = Path.Combine(_repo.FullPath, _filePath);
                 var tmpPath = $"{fullPath}.{Guid.NewGuid():N}.sourcegit-merge.tmp";
+
+                // Preserve the original file's Unix permissions (e.g. the executable bit
+                // of a script), which the temp+replace would otherwise drop.
+                UnixFileMode? mode = !OperatingSystem.IsWindows() && File.Exists(fullPath)
+                    ? File.GetUnixFileMode(fullPath)
+                    : null;
+
                 try
                 {
                     await File.WriteAllTextAsync(tmpPath, builder.ToString(), _outputEncoding);
                     File.Move(tmpPath, fullPath, true);
+                    if (!OperatingSystem.IsWindows() && mode is { } m)
+                        File.SetUnixFileMode(fullPath, m);
                 }
                 catch
                 {
@@ -248,29 +257,36 @@ namespace SourceGit.ViewModels
         // BOM, matching the previous behaviour for ordinary UTF-8 files.
         private static bool TryDecodePreservingEncoding(byte[] bytes, out string text, out Encoding encoding)
         {
-            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-            {
-                encoding = new UTF8Encoding(true);
-                text = new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
-                return true;
-            }
-
-            if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
-            {
-                encoding = new UnicodeEncoding(false, true);
-                text = new UnicodeEncoding(false, false).GetString(bytes, 2, bytes.Length - 2);
-                return true;
-            }
-
-            if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
-            {
-                encoding = new UnicodeEncoding(true, true);
-                text = new UnicodeEncoding(true, false).GetString(bytes, 2, bytes.Length - 2);
-                return true;
-            }
+            // Decode strictly (throw on invalid bytes) in every branch and refuse the
+            // file on failure, so neither a BOM-marked nor an unmarked file can be
+            // silently corrupted with U+FFFD replacement characters on save. The write
+            // encoding mirrors the detected one (preserving any BOM).
+            text = string.Empty;
+            encoding = new UTF8Encoding(false);
 
             try
             {
+                if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+                {
+                    text = new UTF8Encoding(false, true).GetString(bytes, 3, bytes.Length - 3);
+                    encoding = new UTF8Encoding(true);
+                    return true;
+                }
+
+                if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+                {
+                    text = new UnicodeEncoding(false, false, true).GetString(bytes, 2, bytes.Length - 2);
+                    encoding = new UnicodeEncoding(false, true);
+                    return true;
+                }
+
+                if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+                {
+                    text = new UnicodeEncoding(true, false, true).GetString(bytes, 2, bytes.Length - 2);
+                    encoding = new UnicodeEncoding(true, true);
+                    return true;
+                }
+
                 text = new UTF8Encoding(false, true).GetString(bytes);
                 encoding = new UTF8Encoding(false);
                 return true;

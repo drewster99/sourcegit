@@ -160,6 +160,8 @@ internal static class Program
         Check(Throws(() => new SourceGit.Commands.Blame("/repo", "file.txt", dash, false)), "H1 Blame rejects option-looking revision");
         Check(ThrowsAsync(() => new SourceGit.Commands.Checkout("/repo").BranchAsync(dash, false)), "H1 Checkout.BranchAsync rejects option-looking branch");
         Check(ThrowsAsync(() => new SourceGit.Commands.Worktree("/repo").AddWithLocalBranchAsync("/tmp/wt", dash)), "H1 Worktree rejects option-looking branch");
+        Check(Throws(() => new SourceGit.Commands.MergeTree("/repo", dash, "main")), "H1 MergeTree rejects option-looking source");
+        Check(Throws(() => new SourceGit.Commands.MergeBase("/repo", dash, "main")), "H1 MergeBase rejects option-looking rev");
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0

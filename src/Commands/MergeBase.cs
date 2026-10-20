@@ -13,7 +13,8 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             RaiseError = false;
-            Args = $"merge-base {rev1} {rev2}";
+            // rev1/rev2 are repo-controlled refs; reject option-looking values.
+            Args = $"merge-base {RequireSafeGitOperand(rev1, nameof(rev1))} {RequireSafeGitOperand(rev2, nameof(rev2))}";
         }
 
         public async Task<string> GetResultAsync()
