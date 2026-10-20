@@ -258,9 +258,14 @@ namespace SourceGit.Commands
         // literal here. This keeps legitimate local-path remotes (e.g. a Windows
         // `C:\repos\x.git` pushRemote) working. Only ASCII-significant characters are
         // rejected, so valid Unicode remote/branch names (which git permits) are accepted.
+        // An empty value is safe: it cannot be an option and does not split into extra
+        // arguments (git uses an empty revision for the index operand, e.g. `show :path`).
         internal static bool IsSafeGitOperand(string value)
         {
-            if (string.IsNullOrEmpty(value) || value[0] == '-')
+            if (string.IsNullOrEmpty(value))
+                return true;
+
+            if (value[0] == '-')
                 return false;
 
             foreach (var c in value)

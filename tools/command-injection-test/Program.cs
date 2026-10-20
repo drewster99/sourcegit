@@ -166,6 +166,7 @@ internal static class Program
         Check(Throws(() => new SourceGit.Commands.QueryRevisionByRefName("/repo", dash)), "H1 QueryRevisionByRefName rejects option-looking ref");
         Check(Throws(() => new SourceGit.Commands.CompareRevisions("/repo", dash, "HEAD")), "H1 CompareRevisions rejects option-looking start");
         Check(Throws(() => new SourceGit.Commands.Replay("/repo", dash, "a..b")), "H1 Replay rejects option-looking onto");
+        Check(!Throws(() => new SourceGit.Commands.QueryFileSize("/repo", "file.txt", string.Empty)), "H1 QueryFileSize allows empty revision (git index operand)");
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0
