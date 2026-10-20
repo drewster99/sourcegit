@@ -189,6 +189,7 @@ namespace SourceGit.ViewModels
                     try
                     {
                         proc.Kill(true);
+                        proc.WaitForExit(5000);
                     }
                     catch
                     {
@@ -222,10 +223,12 @@ namespace SourceGit.ViewModels
                     }
 
                     // Confirm the key is really encrypted now: extracting the public key
-                    // with an empty passphrase must FAIL. If it succeeds, the passphrase
-                    // did not take (e.g. a platform where stdin was not consulted) — refuse
-                    // rather than publish an unencrypted key the user believes is protected.
-                    if (RunKeygen($"-y -P \"\" -f {tmpKey.Quoted()}", null) == 0)
+                    // with an empty passphrase must FAIL. Publish only on a definite
+                    // non-zero exit; a success (unencrypted) or a timeout (null) is treated
+                    // as failure, so an unprotected key the user believes is encrypted is
+                    // never published.
+                    var verifyExitCode = RunKeygen($"-y -P \"\" -f {tmpKey.Quoted()}", null);
+                    if (verifyExitCode is null or 0)
                     {
                         ErrorMessage = "Failed to protect SSH key with the provided passphrase.";
                         Cleanup();
@@ -234,9 +237,27 @@ namespace SourceGit.ViewModels
                 }
 
                 // Publish. File.Move without overwrite throws if a pair appeared meanwhile,
-                // so an existing key is never clobbered.
+                // so an existing key is never clobbered. If publishing the public key fails
+                // after the private key moved, roll the private key back so no partial pair
+                // is left behind.
                 File.Move(tmpKey, keyFile);
-                File.Move(tmpPub, publicKeyFile);
+                try
+                {
+                    File.Move(tmpPub, publicKeyFile);
+                }
+                catch
+                {
+                    try
+                    {
+                        File.Delete(keyFile);
+                    }
+                    catch
+                    {
+                        // Ignore.
+                    }
+
+                    throw;
+                }
             }
             catch (Exception e)
             {
