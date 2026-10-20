@@ -16,7 +16,7 @@ namespace SourceGit.Commands
             if (noVerify)
                 builder.Append("--no-verify ");
 
-            Args = builder.Append(basedOn).ToString();
+            Args = builder.Append(RequireSafeGitOperand(basedOn, nameof(basedOn))).ToString();
         }
     }
 }

@@ -16,6 +16,9 @@ namespace SourceGit.Commands
             Context = repo;
             RaiseError = false;
 
+            if (!string.IsNullOrEmpty(revision))
+                RequireSafeGitOperand(revision, nameof(revision));
+
             var builder = new StringBuilder();
             builder.Append("blame -f -t ");
             if (ignoreWhitespace)

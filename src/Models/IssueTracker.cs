@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SourceGit.Models
@@ -26,7 +27,11 @@ namespace SourceGit.Models
                 {
                     try
                     {
-                        _regex = new Regex(_regexString, RegexOptions.Multiline);
+                        // The pattern can come from a repo's shared .issuetracker file and
+                        // is run against every commit subject/body on the UI thread, so a
+                        // bounded match timeout guards against catastrophic backtracking
+                        // (ReDoS) freezing the app.
+                        _regex = new Regex(_regexString, RegexOptions.Multiline, TimeSpan.FromMilliseconds(500));
                     }
                     catch
                     {
@@ -54,23 +59,31 @@ namespace SourceGit.Models
             if (_regex == null || string.IsNullOrEmpty(_urlTemplate))
                 return;
 
-            var matches = _regex.Matches(message);
-            foreach (Match match in matches)
+            try
             {
-                var start = match.Index;
-                var len = match.Length;
-                if (outs.Intersect(start, len) != null)
-                    continue;
-
-                var link = _urlTemplate;
-                for (var j = 1; j < match.Groups.Count; j++)
+                var matches = _regex.Matches(message);
+                foreach (Match match in matches)
                 {
-                    var group = match.Groups[j];
-                    if (group.Success)
-                        link = link.Replace($"${j}", group.Value);
-                }
+                    var start = match.Index;
+                    var len = match.Length;
+                    if (outs.Intersect(start, len) != null)
+                        continue;
 
-                outs.Add(new InlineElement(InlineElementType.Link, start, len, link));
+                    var link = _urlTemplate;
+                    for (var j = 1; j < match.Groups.Count; j++)
+                    {
+                        var group = match.Groups[j];
+                        if (group.Success)
+                            link = link.Replace($"${j}", group.Value);
+                    }
+
+                    outs.Add(new InlineElement(InlineElementType.Link, start, len, link));
+                }
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                // A pathological pattern exceeded the match timeout; skip issue links for
+                // this message rather than block the UI.
             }
         }
 

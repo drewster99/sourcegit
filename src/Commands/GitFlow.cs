@@ -20,14 +20,14 @@ namespace SourceGit.Commands
                     .Append("flow init --preset=classic ")
                     .Append("--main=").Append(production.Quoted()).Append(' ')
                     .Append("--develop=").Append(develop.Quoted()).Append(' ')
-                    .Append("--feature=").Append(feature).Append(' ')
+                    .Append("--feature=").Append(RequireSafeGitOperand(feature, nameof(feature))).Append(' ')
                     .Append("--bugfix=bugfix/ ")
-                    .Append("--release=").Append(release).Append(' ')
-                    .Append("--hotfix=").Append(hotfix).Append(' ')
+                    .Append("--release=").Append(RequireSafeGitOperand(release, nameof(release))).Append(' ')
+                    .Append("--hotfix=").Append(RequireSafeGitOperand(hotfix, nameof(hotfix))).Append(' ')
                     .Append("--support=support/");
 
                 if (!string.IsNullOrEmpty(tag))
-                    builder.Append(" --tag=").Append(tag);
+                    builder.Append(" --tag=").Append(RequireSafeGitOperand(tag, nameof(tag)));
 
                 Args = builder.ToString();
                 return await ExecAsync().ConfigureAwait(false);
@@ -68,9 +68,9 @@ namespace SourceGit.Commands
                     return false;
             }
 
-            builder.Append(" start ").Append(name);
+            builder.Append(" start ").Append(RequireSafeGitOperand(name, nameof(name)));
             if (based != null)
-                builder.Append(' ').Append(based.Name);
+                builder.Append(' ').Append(RequireSafeGitOperand(based.Name, nameof(based)));
 
             Args = builder.ToString();
             return await ExecAsync().ConfigureAwait(false);
@@ -104,7 +104,7 @@ namespace SourceGit.Commands
                 builder.Append("--squash ");
             if (keepBranch)
                 builder.Append("--keep ");
-            builder.Append(name);
+            builder.Append(RequireSafeGitOperand(name, nameof(name)));
 
             Args = builder.ToString();
             return await ExecAsync().ConfigureAwait(false);

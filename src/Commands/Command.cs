@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -41,7 +41,10 @@ namespace SourceGit.Commands
         {
             Log?.AppendLine($"$ git {Args}\n");
 
-            var errs = new List<string>();
+            // stdout and stderr are pumped on separate threads, so this is appended from
+            // both OutputDataReceived and ErrorDataReceived concurrently; use a
+            // thread-safe collection to avoid torn state / lost lines.
+            var errs = new ConcurrentQueue<string>();
 
             using var proc = new Process();
             proc.StartInfo = CreateGitStartInfo(true);
@@ -280,7 +283,7 @@ namespace SourceGit.Commands
             return value;
         }
 
-        private void HandleOutput(string line, List<string> errs)
+        private void HandleOutput(string line, ConcurrentQueue<string> errs)
         {
             if (line == null)
                 return;
@@ -301,7 +304,7 @@ namespace SourceGit.Commands
                     return;
             }
 
-            errs.Add(line);
+            errs.Enqueue(line);
         }
 
         private class CapturedProcess

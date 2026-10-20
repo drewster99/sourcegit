@@ -9,7 +9,9 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
-            _name = name;
+            // The branch name is repo-controlled; reject option-looking/unsafe values so
+            // it can never be parsed as a git option on the command line.
+            _name = RequireSafeGitOperand(name, nameof(name));
         }
 
         public async Task<bool> CreateAsync(string basedOn, bool force)
@@ -20,7 +22,7 @@ namespace SourceGit.Commands
                 builder.Append("-f ");
             builder.Append(_name);
             builder.Append(" ");
-            builder.Append(basedOn);
+            builder.Append(RequireSafeGitOperand(basedOn, nameof(basedOn)));
 
             Args = builder.ToString();
             return await ExecAsync().ConfigureAwait(false);
@@ -28,7 +30,7 @@ namespace SourceGit.Commands
 
         public async Task<bool> RenameAsync(string to)
         {
-            Args = $"branch -M {_name} {to}";
+            Args = $"branch -M {_name} {RequireSafeGitOperand(to, nameof(to))}";
             return await ExecAsync().ConfigureAwait(false);
         }
 
@@ -37,7 +39,7 @@ namespace SourceGit.Commands
             if (tracking == null)
                 Args = $"branch {_name} --unset-upstream";
             else
-                Args = $"branch {_name} -u {tracking.FriendlyName}";
+                Args = $"branch {_name} -u {RequireSafeGitOperand(tracking.FriendlyName, nameof(tracking))}";
 
             return await ExecAsync().ConfigureAwait(false);
         }
@@ -50,7 +52,7 @@ namespace SourceGit.Commands
 
         public async Task<bool> DeleteRemoteAsync(string remote, bool force)
         {
-            Args = $"branch {(force ? "-D" : "-d")} -r {remote}/{_name}";
+            Args = $"branch {(force ? "-D" : "-d")} -r {RequireSafeGitOperand(remote, nameof(remote))}/{_name}";
             return await ExecAsync().ConfigureAwait(false);
         }
 

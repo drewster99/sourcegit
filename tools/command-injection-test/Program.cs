@@ -1,11 +1,16 @@
 using System;
 using System.Diagnostics;
 using System.Text;
+using System.Threading.Tasks;
 
-// Verifies the fixes for issue #1 (command injection) against the real code:
+// Verifies the fixes for issue #1 (command injection) and the option-injection class
+// of issue #2 (H1) against the real code:
 //   C1 - GIT_SSH_COMMAND must shell-quote the (repo-controlled) ssh key path.
 //   C2 - remote/refspec positionals must be preceded by --end-of-options (git)
 //        or -- (git-lfs), so a name beginning with '-' cannot be an option.
+//   H1 - other commands that take repo-controlled refs/branches/tags must reject
+//        option-looking operands (Branch/Checkout/Merge/Tag/Reset/CherryPick/Rebase/
+//        Revert/Blame/Worktree).
 
 internal static class Program
 {
@@ -28,6 +33,21 @@ internal static class Program
         try
         {
             action();
+            return false;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    // An async command method validates before its first await, but the exception is
+    // captured on the returned Task, so it must be observed by awaiting.
+    private static bool ThrowsAsync(Func<Task> action)
+    {
+        try
+        {
+            action().GetAwaiter().GetResult();
             return false;
         }
         catch
@@ -124,6 +144,22 @@ internal static class Program
 
         var winPath = new SourceGit.Models.Remote { Name = @"C:\repos\dest.git", PrivateSSHKey = string.Empty };
         Check(!Throws(() => new SourceGit.Commands.Fetch("/repo", winPath, false, false)), "C2 Windows local-path remote accepted");
+
+        // H1: other commands reject option-looking repo-controlled refs/branches/tags.
+        const string dash = "--upload-pack=x";
+        Check(Throws(() => new SourceGit.Commands.Branch("/repo", dash)), "H1 Branch(ctor) rejects option-looking name");
+        Check(!Throws(() => new SourceGit.Commands.Branch("/repo", "feature/x")), "H1 Branch(ctor) accepts valid name");
+        Check(Throws(() => new SourceGit.Commands.Merge("/repo", dash, "--no-ff", false)), "H1 Merge rejects option-looking source");
+        Check(!Throws(() => new SourceGit.Commands.Merge("/repo", "main", "--no-ff", false)), "H1 Merge accepts valid source + keeps mode flag");
+        Check(Throws(() => new SourceGit.Commands.Tag("/repo", dash)), "H1 Tag(ctor) rejects option-looking name");
+        Check(Throws(() => new SourceGit.Commands.Reset("/repo", dash, "--hard")), "H1 Reset rejects option-looking revision");
+        Check(!Throws(() => new SourceGit.Commands.Reset("/repo", string.Empty, "--hard")), "H1 Reset allows empty revision (discard)");
+        Check(Throws(() => new SourceGit.Commands.CherryPick("/repo", "abc " + dash, false, false, string.Empty)), "H1 CherryPick rejects option-looking commit token");
+        Check(Throws(() => new SourceGit.Commands.Rebase("/repo", dash, false, false)), "H1 Rebase rejects option-looking basedOn");
+        Check(Throws(() => new SourceGit.Commands.Revert("/repo", dash, false)), "H1 Revert rejects option-looking commit");
+        Check(Throws(() => new SourceGit.Commands.Blame("/repo", "file.txt", dash, false)), "H1 Blame rejects option-looking revision");
+        Check(ThrowsAsync(() => new SourceGit.Commands.Checkout("/repo").BranchAsync(dash, false)), "H1 Checkout.BranchAsync rejects option-looking branch");
+        Check(ThrowsAsync(() => new SourceGit.Commands.Worktree("/repo").AddWithLocalBranchAsync("/tmp/wt", dash)), "H1 Worktree rejects option-looking branch");
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0

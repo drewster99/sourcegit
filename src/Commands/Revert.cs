@@ -12,7 +12,7 @@ namespace SourceGit.Commands
             var builder = new StringBuilder(512);
             builder
                 .Append("revert -m 1 ")
-                .Append(commit)
+                .Append(RequireSafeGitOperand(commit, nameof(commit)))
                 .Append(" --no-edit");
             if (!autoCommit)
                 builder.Append(" --no-commit");

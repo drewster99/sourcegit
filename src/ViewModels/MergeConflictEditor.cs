@@ -96,7 +96,16 @@ namespace SourceGit.ViewModels
             var workingCopyPath = Path.Combine(_repo.FullPath, _filePath);
             var workingCopyContent = string.Empty;
             if (File.Exists(workingCopyPath))
-                workingCopyContent = File.ReadAllText(workingCopyPath);
+            {
+                // Preserve the file's encoding and refuse (rather than silently corrupt)
+                // a file that is not valid UTF-8, so resolving a conflict can never mangle
+                // a non-UTF-8 source file.
+                if (!TryDecodePreservingEncoding(File.ReadAllBytes(workingCopyPath), out workingCopyContent, out _outputEncoding))
+                {
+                    _error = "File is binary or not UTF-8; not supported.";
+                    return;
+                }
+            }
 
             if (workingCopyContent.IndexOf('\0', StringComparison.Ordinal) >= 0)
             {
@@ -195,9 +204,22 @@ namespace SourceGit.ViewModels
 
             try
             {
-                // Write merged content to file
+                // Write merged content to the working file atomically (write a sibling
+                // temp file, then replace), preserving the original encoding, so a failed
+                // write can never leave the real file truncated with markers removed.
                 var fullPath = Path.Combine(_repo.FullPath, _filePath);
-                await File.WriteAllTextAsync(fullPath, builder.ToString());
+                var tmpPath = $"{fullPath}.{Guid.NewGuid():N}.sourcegit-merge.tmp";
+                try
+                {
+                    await File.WriteAllTextAsync(tmpPath, builder.ToString(), _outputEncoding);
+                    File.Move(tmpPath, fullPath, true);
+                }
+                catch
+                {
+                    if (File.Exists(tmpPath))
+                        File.Delete(tmpPath);
+                    throw;
+                }
 
                 // Stage the file
                 var pathSpecFile = Path.GetTempFileName();
@@ -218,6 +240,47 @@ namespace SourceGit.ViewModels
         public void ClearErrorMessage()
         {
             Error = string.Empty;
+        }
+
+        // Decodes bytes while remembering the encoding to write back with. A BOM-marked
+        // UTF-8/UTF-16 file keeps its encoding and BOM; an unmarked file must be valid
+        // UTF-8 (otherwise the caller refuses it) and is written back as UTF-8 without a
+        // BOM, matching the previous behaviour for ordinary UTF-8 files.
+        private static bool TryDecodePreservingEncoding(byte[] bytes, out string text, out Encoding encoding)
+        {
+            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            {
+                encoding = new UTF8Encoding(true);
+                text = new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
+                return true;
+            }
+
+            if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+            {
+                encoding = new UnicodeEncoding(false, true);
+                text = new UnicodeEncoding(false, false).GetString(bytes, 2, bytes.Length - 2);
+                return true;
+            }
+
+            if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+            {
+                encoding = new UnicodeEncoding(true, true);
+                text = new UnicodeEncoding(true, false).GetString(bytes, 2, bytes.Length - 2);
+                return true;
+            }
+
+            try
+            {
+                text = new UTF8Encoding(false, true).GetString(bytes);
+                encoding = new UTF8Encoding(false);
+                return true;
+            }
+            catch (DecoderFallbackException)
+            {
+                text = string.Empty;
+                encoding = new UTF8Encoding(false);
+                return false;
+            }
         }
 
         private void ParseOriginalContent(string content)
@@ -480,5 +543,6 @@ namespace SourceGit.ViewModels
         private Vector _scrollOffset = Vector.Zero;
         private Models.ConflictSelectedChunk _selectedChunk;
         private string _error = string.Empty;
+        private Encoding _outputEncoding = new UTF8Encoding(false);
     }
 }
