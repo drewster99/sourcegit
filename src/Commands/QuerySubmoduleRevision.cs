@@ -41,9 +41,9 @@ namespace SourceGit.Commands
             if (!string.IsNullOrEmpty(lines[2]))
                 commit.ParseDecorators(lines[2]);
             commit.Author = Models.User.FindOrAdd(lines[3]);
-            commit.AuthorTime = ulong.Parse(lines[4]);
+            commit.AuthorTime = ulong.TryParse(lines[4], out var authorTime) ? authorTime : 0;
             commit.Committer = Models.User.FindOrAdd(lines[5]);
-            commit.CommitterTime = ulong.Parse(lines[6]);
+            commit.CommitterTime = ulong.TryParse(lines[6], out var committerTime) ? committerTime : 0;
             commit.Subject = lines[7];
 
             var message = lines[8].TrimEnd();

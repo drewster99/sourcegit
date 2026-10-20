@@ -50,13 +50,13 @@ namespace SourceGit.Commands
                         current.Commit.Author = Models.User.FindOrAdd(line);
                         break;
                     case 4:
-                        current.Commit.AuthorTime = ulong.Parse(line);
+                        current.Commit.AuthorTime = ulong.TryParse(line, out var authorTime) ? authorTime : 0;
                         break;
                     case 5:
                         current.Commit.Committer = Models.User.FindOrAdd(line);
                         break;
                     case 6:
-                        current.Commit.CommitterTime = ulong.Parse(line);
+                        current.Commit.CommitterTime = ulong.TryParse(line, out var committerTime) ? committerTime : 0;
                         break;
                     case 7:
                         current.Commit.Subject = line;

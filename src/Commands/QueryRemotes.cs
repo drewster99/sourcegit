@@ -25,20 +25,29 @@ namespace SourceGit.Commands
                 if (!k.StartsWith("remote.", StringComparison.Ordinal))
                     continue;
 
+                // Each branch slices out the remote name between the "remote." prefix and
+                // the known suffix; guard the length so a section-only key such as
+                // "remote.url" (no name) cannot produce a negative Substring length.
                 if (k.EndsWith(".url", StringComparison.Ordinal))
                 {
+                    if (k.Length <= 11)
+                        continue;
                     var name = k.Substring(7, k.Length - 11).Trim('"');
                     names.Add(name);
                     urls[name] = v;
                 }
                 else if (k.EndsWith(".pushurl", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (k.Length <= 15)
+                        continue;
                     var name = k.Substring(7, k.Length - 15).Trim('"');
                     names.Add(name);
                     pushUrls[name] = v;
                 }
                 else if (k.EndsWith(".sshkey", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (k.Length <= 14)
+                        continue;
                     var name = k.Substring(7, k.Length - 14).Trim('"');
                     names.Add(name);
                     privateSSHKeys[name] = v;
@@ -46,6 +55,8 @@ namespace SourceGit.Commands
                 else if (k.EndsWith(".disableautofetch", StringComparison.OrdinalIgnoreCase) &&
                          v.Equals("true", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (k.Length <= 24)
+                        continue;
                     var name = k.Substring(7, k.Length - 24).Trim('"');
                     disableAutoFetchRemotes.Add(name);
                 }

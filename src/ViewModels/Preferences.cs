@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -614,9 +615,13 @@ namespace SourceGit.ViewModels
 
         public void UpdateAvailableAIModels()
         {
+            // Snapshot on the current (UI) thread: OpenAIServices is a UI-bound collection
+            // that can be edited while this runs, and enumerating it on the background
+            // thread would throw "collection was modified".
+            var services = OpenAIServices.ToList();
             Task.Run(() =>
             {
-                foreach (var service in OpenAIServices)
+                foreach (var service in services)
                 {
                     try
                     {
@@ -635,12 +640,23 @@ namespace SourceGit.ViewModels
             if (_isLoading || _isReadonly)
                 return;
 
-            var tmpfile = Path.Combine(Native.OS.BasicDirectories.ConfigDir, "preference_tmp.json");
-            var content = JsonSerializer.Serialize(this, JsonCodeGen.Default.Preferences);
-            File.WriteAllText(tmpfile, content);
+            // Save is invoked from many property setters (on the UI thread); wrap the I/O
+            // so a transient failure (disk full, read-only config dir) surfaces as a
+            // notification instead of an unhandled exception. The temp-file + atomic rename
+            // still protects the existing preference.json from partial-write corruption.
+            try
+            {
+                var tmpfile = Path.Combine(Native.OS.BasicDirectories.ConfigDir, "preference_tmp.json");
+                var content = JsonSerializer.Serialize(this, JsonCodeGen.Default.Preferences);
+                File.WriteAllText(tmpfile, content);
 
-            var finalFile = Path.Combine(Native.OS.BasicDirectories.ConfigDir, "preference.json");
-            File.Move(tmpfile, finalFile, true);
+                var finalFile = Path.Combine(Native.OS.BasicDirectories.ConfigDir, "preference.json");
+                File.Move(tmpfile, finalFile, true);
+            }
+            catch (Exception ex)
+            {
+                Models.Notification.Send(null, $"Failed to save preferences: {ex.Message}", true);
+            }
         }
 
         private static Preferences Load()

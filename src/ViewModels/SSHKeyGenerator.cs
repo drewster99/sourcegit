@@ -121,9 +121,14 @@ namespace SourceGit.ViewModels
             var type = _type?.Cmdline ?? "-t ed25519";
             var passphrase = _usePassphrase ? _passphrase : string.Empty;
             var keyFile = Path.Combine(dir, _name);
+
+            // Create the key WITHOUT a passphrase on the command line, then (if requested)
+            // set the passphrase via `ssh-keygen -p` with the secret fed over stdin. This
+            // keeps the passphrase out of the process argument list, which other local
+            // users can read via `ps` / `/proc/<pid>/cmdline`.
             var start = new ProcessStartInfo();
             start.FileName = "ssh-keygen";
-            start.Arguments = $"-q {type} -N {passphrase.Quoted()} -C {_email.Quoted()} -f {keyFile.Quoted()}";
+            start.Arguments = $"-q {type} -N \"\" -C {_email.Quoted()} -f {keyFile.Quoted()}";
             start.UseShellExecute = false;
             start.CreateNoWindow = true;
 
@@ -131,7 +136,40 @@ namespace SourceGit.ViewModels
             {
                 var proc = Process.Start(start);
                 proc.WaitForExit();
+                var generated = proc.ExitCode == 0;
                 proc.Close();
+
+                if (!generated)
+                {
+                    ErrorMessage = "Failed to generate SSH key.";
+                    return null;
+                }
+
+                if (!string.IsNullOrEmpty(passphrase))
+                {
+                    var setPass = new ProcessStartInfo();
+                    setPass.FileName = "ssh-keygen";
+                    setPass.Arguments = $"-p -f {keyFile.Quoted()}";
+                    setPass.UseShellExecute = false;
+                    setPass.CreateNoWindow = true;
+                    setPass.RedirectStandardInput = true;
+                    setPass.RedirectStandardOutput = true;
+                    setPass.RedirectStandardError = true;
+
+                    using var passProc = Process.Start(setPass);
+                    // The freshly created key is unencrypted, so ssh-keygen -p asks only
+                    // for the new passphrase and its confirmation.
+                    passProc.StandardInput.WriteLine(passphrase);
+                    passProc.StandardInput.WriteLine(passphrase);
+                    passProc.StandardInput.Close();
+                    passProc.WaitForExit();
+
+                    if (passProc.ExitCode != 0)
+                    {
+                        ErrorMessage = "Failed to set SSH key passphrase.";
+                        return null;
+                    }
+                }
             }
             catch (Exception e)
             {

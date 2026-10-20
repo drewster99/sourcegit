@@ -52,7 +52,7 @@ namespace SourceGit.Commands
                     last.SHA = parts[0].Substring(1);
                     last.HasParent = !string.IsNullOrEmpty(parts[1]);
                     last.Author = Models.User.FindOrAdd(parts[2]);
-                    last.AuthorTime = ulong.Parse(parts[3]);
+                    last.AuthorTime = ulong.TryParse(parts[3], out var authorTime) ? authorTime : 0;
                     last.Subject = parts[4];
                     versions.Add(last);
                 }

@@ -220,7 +220,18 @@ namespace SourceGit.Models
                 _users.Add(email, user);
             }
 
-            var time = DateTime.UnixEpoch.AddSeconds(timestamp).ToLocalTime().Date;
+            // A crafted/corrupt commit can carry an out-of-range committer date; ignore
+            // such a commit rather than letting AddSeconds/ToLocalTime throw.
+            DateTime time;
+            try
+            {
+                time = DateTime.UnixEpoch.AddSeconds(timestamp).ToLocalTime().Date;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return;
+            }
+
             if (time >= _thisWeekStart)
                 Week.AddCommit(time, user);
 

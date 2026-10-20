@@ -42,7 +42,7 @@ namespace SourceGit.Commands
                                 current.Parents.AddRange(line.Split(' ', StringSplitOptions.RemoveEmptyEntries));
                             break;
                         case 2:
-                            current.Time = ulong.Parse(line);
+                            current.Time = ulong.TryParse(line, out var stashTime) ? stashTime : 0;
                             break;
                         case 3:
                             current.Name = line;

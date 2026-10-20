@@ -94,17 +94,24 @@ namespace SourceGit.Models
                         var rsp = await client.GetAsync(url);
                         if (rsp.IsSuccessStatusCode)
                         {
-                            using (var stream = rsp.Content.ReadAsStream())
-                            {
-                                using (var writer = File.Create(localFile))
-                                {
-                                    stream.CopyTo(writer);
-                                }
-                            }
+                            // Buffer and validate the image in memory first, then persist
+                            // atomically (temp file + move). A timeout/failure mid-download
+                            // must not leave a truncated/corrupt file at the cache path.
+                            var bytes = await rsp.Content.ReadAsByteArrayAsync();
+                            using (var buffer = new MemoryStream(bytes))
+                                img = Bitmap.DecodeToWidth(buffer, 128);
 
-                            using (var reader = File.OpenRead(localFile))
+                            var tmpFile = $"{localFile}.{Guid.NewGuid():N}.tmp";
+                            try
                             {
-                                img = Bitmap.DecodeToWidth(reader, 128);
+                                await File.WriteAllBytesAsync(tmpFile, bytes);
+                                File.Move(tmpFile, localFile, true);
+                            }
+                            catch
+                            {
+                                if (File.Exists(tmpFile))
+                                    File.Delete(tmpFile);
+                                throw;
                             }
                         }
                     }

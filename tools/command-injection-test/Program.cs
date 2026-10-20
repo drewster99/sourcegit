@@ -168,6 +168,10 @@ internal static class Program
         Check(Throws(() => new SourceGit.Commands.Replay("/repo", dash, "a..b")), "H1 Replay rejects option-looking onto");
         Check(!Throws(() => new SourceGit.Commands.QueryFileSize("/repo", "file.txt", string.Empty)), "H1 QueryFileSize allows empty revision (git index operand)");
 
+        // M8: Commit.GetFriendlyName must not crash on a SHA shorter than 10 chars.
+        Check(new SourceGit.Models.Commit { SHA = "abc" }.GetFriendlyName() == "abc", "M8 Commit.GetFriendlyName handles short SHA");
+        Check(new SourceGit.Models.Commit { SHA = "0123456789abcdef" }.GetFriendlyName() == "0123456789", "M8 Commit.GetFriendlyName truncates long SHA");
+
         Console.WriteLine();
         Console.WriteLine(_failures == 0
             ? "All command-injection regression checks passed."
