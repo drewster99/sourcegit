@@ -29,7 +29,7 @@ namespace SourceGit.Commands
                 return [];
 
             var parent = shas.Length > 1 ? shas[1] : Models.EmptyTreeHash.Guess(shas[0]);
-            Args = $"diff-index --cached -M {parent}";
+            Args = $"diff-index --cached -M {RequireSafeGitOperand(parent, nameof(parent))}";
             rs = ReadToEnd();
             if (!rs.IsSuccess)
                 return [];

@@ -16,7 +16,7 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
-            Args = $"check-attr --source {sha} -z filter {path.Quoted()}";
+            Args = $"check-attr --source {RequireSafeGitOperand(sha, nameof(sha))} -z filter {path.Quoted()}";
             RaiseError = false;
         }
 

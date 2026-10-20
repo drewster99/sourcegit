@@ -20,7 +20,7 @@ namespace SourceGit.Commands
             if (specBranch == null || string.IsNullOrEmpty(specBranch.FullName))
                 builder.Append("--branches --remotes");
             else
-                builder.Append(specBranch.FullName);
+                builder.Append(RequireSafeGitOperand(specBranch.FullName, nameof(specBranch)));
 
             Args = builder.ToString();
         }

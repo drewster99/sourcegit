@@ -14,7 +14,7 @@ namespace SourceGit.Commands
             var builder = new StringBuilder();
             builder.Append("diff --no-color --no-ext-diff --diff-algorithm=minimal --cached ");
             if (!string.IsNullOrEmpty(amendParent))
-                builder.Append(amendParent).Append(' ');
+                builder.Append(RequireSafeGitOperand(amendParent, nameof(amendParent))).Append(' ');
             builder.Append("-- ");
             if (!string.IsNullOrEmpty(originalFile) && !file.Equals(originalFile, StringComparison.Ordinal))
                 builder.Append(originalFile.Quoted()).Append(' ');

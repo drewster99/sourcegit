@@ -8,7 +8,7 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
-            Args = $"merge-base --is-ancestor {checkPoint} {endPoint}";
+            Args = $"merge-base --is-ancestor {RequireSafeGitOperand(checkPoint, nameof(checkPoint))} {RequireSafeGitOperand(endPoint, nameof(endPoint))}";
         }
 
         public async Task<bool> GetResultAsync()
