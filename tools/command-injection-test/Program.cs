@@ -23,6 +23,19 @@ internal static class Program
             _failures++;
     }
 
+    private static bool Throws(Action action)
+    {
+        try
+        {
+            action();
+            return false;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
     // Decode a POSIX sh word made of '...' segments plus \-escapes, back to its literal.
     private static string PosixUnquote(string s)
     {
@@ -71,28 +84,36 @@ internal static class Program
             Check(ok, $"C1 ssh key quoted+round-trips: «{key}»");
         }
 
-        // C2: option-looking remote name is neutralized by an end-of-options separator.
-        const string evil = "--upload-pack=touch /tmp/PWNED";
-        var remote = new SourceGit.Models.Remote { Name = evil, PrivateSSHKey = string.Empty };
+        // C2a: fetch/push neutralize an option-looking remote name with --end-of-options
+        // (these commands do not re-forward operands, so the terminator is sufficient).
+        const string dashName = "--upload-pack=x";
+        var evilRemote = new SourceGit.Models.Remote { Name = dashName, PrivateSSHKey = string.Empty };
+        var goodRemote = new SourceGit.Models.Remote { Name = "origin", PrivateSSHKey = string.Empty };
         var branch = new SourceGit.Models.Branch { Name = "main" };
 
-        var fetch1 = new SourceGit.Commands.Fetch("/repo", remote, false, false).Args;
-        Check(fetch1.Contains("--end-of-options " + evil, StringComparison.Ordinal), "C2 Fetch(full) --end-of-options");
+        var fetch1 = new SourceGit.Commands.Fetch("/repo", evilRemote, false, false).Args;
+        Check(fetch1.Contains("--end-of-options " + dashName, StringComparison.Ordinal), "C2 Fetch(full) --end-of-options");
 
-        var fetch2 = new SourceGit.Commands.Fetch("/repo", remote).Args;
-        Check(fetch2.Contains("--end-of-options " + evil, StringComparison.Ordinal), "C2 Fetch(auto) --end-of-options");
+        var fetch2 = new SourceGit.Commands.Fetch("/repo", evilRemote).Args;
+        Check(fetch2.Contains("--end-of-options " + dashName, StringComparison.Ordinal), "C2 Fetch(auto) --end-of-options");
 
-        var fetch3 = new SourceGit.Commands.Fetch("/repo", remote, branch, branch).Args;
-        Check(fetch3.Contains("--end-of-options " + evil, StringComparison.Ordinal), "C2 Fetch(refspec) --end-of-options");
+        var fetch3 = new SourceGit.Commands.Fetch("/repo", evilRemote, branch, branch).Args;
+        Check(fetch3.Contains("--end-of-options " + dashName, StringComparison.Ordinal), "C2 Fetch(refspec) --end-of-options");
 
-        var pull = new SourceGit.Commands.Pull("/repo", remote, branch, false).Args;
-        Check(pull.Contains("--end-of-options " + evil, StringComparison.Ordinal), "C2 Pull --end-of-options");
+        var push1 = new SourceGit.Commands.Push("/repo", branch, evilRemote, branch, false, false, false, false, false).Args;
+        Check(push1.Contains("--end-of-options " + dashName, StringComparison.Ordinal), "C2 Push(branch) --end-of-options");
 
-        var push1 = new SourceGit.Commands.Push("/repo", branch, remote, branch, false, false, false, false, false).Args;
-        Check(push1.Contains("--end-of-options " + evil, StringComparison.Ordinal), "C2 Push(branch) --end-of-options");
+        var push3 = new SourceGit.Commands.Push("/repo", evilRemote, "refs/heads/x", true).Args;
+        Check(push3.Contains("--end-of-options " + dashName, StringComparison.Ordinal), "C2 Push(delete) --end-of-options");
 
-        var push3 = new SourceGit.Commands.Push("/repo", remote, "refs/heads/x", true).Args;
-        Check(push3.Contains("--end-of-options " + evil, StringComparison.Ordinal), "C2 Push(delete) --end-of-options");
+        // C2b: `git pull` strips --end-of-options before its internal fetch, so it must
+        // reject option-looking / whitespace operands outright.
+        var goodPull = new SourceGit.Commands.Pull("/repo", goodRemote, branch, false).Args;
+        Check(goodPull.Contains("--end-of-options origin", StringComparison.Ordinal), "C2 Pull(valid) builds with --end-of-options");
+
+        Check(Throws(() => new SourceGit.Commands.Pull("/repo", evilRemote, branch, false)), "C2 Pull rejects option-looking remote");
+        Check(Throws(() => new SourceGit.Commands.Pull("/repo", new SourceGit.Models.Remote { Name = "origin x", PrivateSSHKey = string.Empty }, branch, false)), "C2 Pull rejects whitespace remote");
+        Check(Throws(() => new SourceGit.Commands.Pull("/repo", goodRemote, new SourceGit.Models.Branch { Name = "-x" }, false)), "C2 Pull rejects option-looking branch");
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0

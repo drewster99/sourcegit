@@ -241,6 +241,26 @@ namespace SourceGit.Commands
             return string.Concat("'", value.Replace("'", "'\\''", StringComparison.Ordinal), "'");
         }
 
+        // True when a repo-controlled operand (remote name, ref) is safe to place on a
+        // git command line: non-empty, not starting with '-' (otherwise parsed as an
+        // option — and `git pull` forwards operands to an internal `git fetch` even past
+        // --end-of-options), and free of whitespace/control characters (which would split
+        // it into additional command-line arguments). A valid remote/branch name always
+        // satisfies this.
+        internal static bool IsSafeGitOperand(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value[0] == '-')
+                return false;
+
+            foreach (var c in value)
+            {
+                if (char.IsWhiteSpace(c) || char.IsControl(c))
+                    return false;
+            }
+
+            return true;
+        }
+
         private void HandleOutput(string line, List<string> errs)
         {
             if (line == null)
