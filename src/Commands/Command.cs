@@ -207,8 +207,11 @@ namespace SourceGit.Commands
                 start.Environment.Add("DISPLAY", "required");
 
             // If an SSH private key was provided, sets the environment.
+            // GIT_SSH_COMMAND is run by git through a shell, and the key path can come
+            // from an untrusted repo's `.git/config` (remote.<name>.sshkey), so it must
+            // be shell-quoted to prevent command injection.
             if (!start.Environment.ContainsKey("GIT_SSH_COMMAND") && !string.IsNullOrEmpty(SSHKey))
-                start.Environment.Add("GIT_SSH_COMMAND", $"ssh -i '{SSHKey}' -o AddKeysToAgent=yes");
+                start.Environment.Add("GIT_SSH_COMMAND", $"ssh -i {EscapeArgumentForShell(SSHKey)} -o AddKeysToAgent=yes");
 
             // Force the C locale on Unix, so that git's output (including fatal errors) can always be parsed.
             if (!OperatingSystem.IsWindows())
@@ -227,6 +230,15 @@ namespace SourceGit.Commands
         protected void RaiseException(string error)
         {
             Models.Notification.Send(Context, error, true);
+        }
+
+        // Wraps a value in POSIX single quotes so it is a single, literal argument when
+        // git passes GIT_SSH_COMMAND to a shell. Any embedded single quote is closed,
+        // escaped and reopened ('\''), so no metacharacter (including newlines) can break
+        // out. Git for Windows also interprets GIT_SSH_COMMAND with a POSIX shell.
+        internal static string EscapeArgumentForShell(string value)
+        {
+            return string.Concat("'", value.Replace("'", "'\\''", StringComparison.Ordinal), "'");
         }
 
         private void HandleOutput(string line, List<string> errs)

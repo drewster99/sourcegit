@@ -23,6 +23,9 @@ namespace SourceGit.Commands
             if (noVerify)
                 builder.Append("--no-verify ");
 
+            // --end-of-options: remote/ref names are repo-controlled; prevent a name
+            // beginning with '-' from being parsed as a git option (option injection).
+            builder.Append("--end-of-options ");
             builder.Append(remote.Name).Append(' ').Append(local.Name).Append(':').Append(remoteBranch.Name);
             Args = builder.ToString();
         }
@@ -38,6 +41,7 @@ namespace SourceGit.Commands
             if (force)
                 builder.Append("--force-with-lease ");
 
+            builder.Append("--end-of-options ");
             builder.Append(remote.Name).Append(' ').Append(revision.SHA).Append(':').Append(remoteBranch.Name);
             Args = builder.ToString();
         }
@@ -52,6 +56,7 @@ namespace SourceGit.Commands
             builder.Append("push ");
             if (isDelete)
                 builder.Append("--delete ");
+            builder.Append("--end-of-options ");
             builder.Append(remote.Name).Append(' ').Append(refname);
 
             Args = builder.ToString();

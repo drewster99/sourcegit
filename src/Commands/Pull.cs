@@ -14,7 +14,9 @@ namespace SourceGit.Commands
             builder
                 .Append("pull --verbose --progress --rebase=")
                 .Append(useRebase ? "true" : "false")
-                .Append(' ')
+                // --end-of-options: remote/branch names are repo-controlled; prevent a
+                // name beginning with '-' from being parsed as a git option.
+                .Append(" --end-of-options ")
                 .Append(remote.Name);
 
             if (remoteBranch != null)

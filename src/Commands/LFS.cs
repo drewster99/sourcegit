@@ -32,19 +32,21 @@ namespace SourceGit.Commands
 
         public async Task FetchAsync(string remote)
         {
-            Args = $"lfs fetch {remote}";
+            // `--` ends option parsing (git-lfs): the remote name is repo-controlled and
+            // could otherwise begin with '-' and be parsed as a flag.
+            Args = $"lfs fetch -- {remote}";
             await ExecAsync().ConfigureAwait(false);
         }
 
         public async Task PullAsync(string remote)
         {
-            Args = $"lfs pull {remote}";
+            Args = $"lfs pull -- {remote}";
             await ExecAsync().ConfigureAwait(false);
         }
 
         public async Task PushAsync(string remote)
         {
-            Args = $"lfs push {remote}";
+            Args = $"lfs push -- {remote}";
             await ExecAsync().ConfigureAwait(false);
         }
 
