@@ -9,6 +9,7 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
+            RequireSafeGitOperand(remote.Name, nameof(remote));
 
             var builder = new StringBuilder(512);
             builder.Append("fetch --progress --verbose ");
@@ -28,6 +29,7 @@ namespace SourceGit.Commands
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
             RaiseError = false;
+            RequireSafeGitOperand(remote.Name, nameof(remote));
             Args = $"fetch --progress --verbose --end-of-options {remote.Name}";
         }
 
@@ -36,6 +38,9 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
+            RequireSafeGitOperand(remote.Name, nameof(remote));
+            RequireSafeGitOperand(remoteBranch.Name, nameof(remoteBranch));
+            RequireSafeGitOperand(local.Name, nameof(local));
             Args = $"fetch --progress --verbose --end-of-options {remote.Name} {remoteBranch.Name}:{local.Name}";
         }
     }

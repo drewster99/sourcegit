@@ -9,6 +9,9 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
+            RequireSafeGitOperand(remote.Name, nameof(remote));
+            RequireSafeGitOperand(local.Name, nameof(local));
+            RequireSafeGitOperand(remoteBranch.Name, nameof(remoteBranch));
 
             var builder = new StringBuilder(1024);
             builder.Append("push --progress --verbose ");
@@ -35,6 +38,8 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
+            RequireSafeGitOperand(remote.Name, nameof(remote));
+            RequireSafeGitOperand(remoteBranch.Name, nameof(remoteBranch));
 
             var builder = new StringBuilder(1024);
             builder.Append("push --progress --verbose ");
@@ -51,6 +56,8 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
+            RequireSafeGitOperand(remote.Name, nameof(remote));
+            RequireSafeGitOperand(refname, nameof(refname));
 
             var builder = new StringBuilder(512);
             builder.Append("push ");

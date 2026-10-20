@@ -242,11 +242,17 @@ namespace SourceGit.Commands
         }
 
         // True when a repo-controlled operand (remote name, ref) is safe to place on a
-        // git command line: non-empty, not starting with '-' (otherwise parsed as an
-        // option — and `git pull` forwards operands to an internal `git fetch` even past
-        // --end-of-options), and free of whitespace/control characters (which would split
-        // it into additional command-line arguments). A valid remote/branch name always
-        // satisfies this.
+        // git command line. The command line is one string that .NET re-parses into argv
+        // using MSVC rules, so the operand must survive that round-trip as a single token
+        // that is not an option:
+        //   - not starting with '-' (otherwise an option — and `git pull` forwards
+        //     operands to an internal `git fetch` even past --end-of-options);
+        //   - no space/tab (argv separators) that would split it into extra arguments;
+        //   - no double quote or backslash (quote toggles / escapes that would let the
+        //     token change shape after parsing, e.g. `""--opt` -> `--opt`);
+        //   - no ASCII control characters.
+        // Only ASCII-significant characters are rejected, so valid Unicode remote/branch
+        // names (which git permits) are still accepted.
         internal static bool IsSafeGitOperand(string value)
         {
             if (string.IsNullOrEmpty(value) || value[0] == '-')
@@ -254,11 +260,22 @@ namespace SourceGit.Commands
 
             foreach (var c in value)
             {
-                if (char.IsWhiteSpace(c) || char.IsControl(c))
+                if (c == ' ' || c == '\t' || c == '"' || c == '\\' || c < 0x20 || c == 0x7F)
                     return false;
             }
 
             return true;
+        }
+
+        // Throws when a repo-controlled operand is not safe to place on a git command
+        // line (see IsSafeGitOperand). A valid remote/branch name/ref always passes, so
+        // this only fires on hand-crafted, option-looking values.
+        internal static string RequireSafeGitOperand(string value, string paramName)
+        {
+            if (!IsSafeGitOperand(value))
+                throw new ArgumentException($"Refusing to run git with an unsafe operand: '{value}'", paramName);
+
+            return value;
         }
 
         private void HandleOutput(string line, List<string> errs)
