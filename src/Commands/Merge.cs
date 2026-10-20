@@ -13,7 +13,9 @@ namespace SourceGit.Commands
             var builder = new StringBuilder();
             builder.Append("merge --progress ");
             builder.Append(edit ? "--edit " : "--no-edit ");
-            builder.Append(source);
+            // `source` is a repo-controlled ref; reject option-looking values. `mode` is
+            // an app-supplied flag and is left as-is.
+            builder.Append(RequireSafeGitOperand(source, nameof(source)));
             builder.Append(' ');
             builder.Append(mode);
 
@@ -34,7 +36,7 @@ namespace SourceGit.Commands
 
             foreach (var t in targets)
             {
-                builder.Append(t);
+                builder.Append(RequireSafeGitOperand(t, nameof(targets)));
                 builder.Append(' ');
             }
 

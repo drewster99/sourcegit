@@ -17,7 +17,7 @@ namespace SourceGit.Commands
             Context = repo;
 
             var builder = new StringBuilder(1024);
-            builder.Append("ls-tree ").Append(sha);
+            builder.Append("ls-tree ").Append(RequireSafeGitOperand(sha, nameof(sha)));
             if (!string.IsNullOrEmpty(parentFolder))
                 builder.Append(" -- ").Append(parentFolder.Quoted());
 

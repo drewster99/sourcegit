@@ -11,7 +11,7 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
-            Args = $"log --topo-order --cherry-pick --right-only --no-merges --no-show-signature --decorate=full --format=%H%x00%P%x00%D%x00%aN±%aE%x00%at%x00%cN±%cE%x00%ct%x00%s {based}...{target}";
+            Args = $"log --topo-order --cherry-pick --right-only --no-merges --no-show-signature --decorate=full --format=%H%x00%P%x00%D%x00%aN±%aE%x00%at%x00%cN±%cE%x00%ct%x00%s {RequireSafeGitOperand(based, nameof(based))}...{RequireSafeGitOperand(target, nameof(target))}";
         }
 
         public async Task<List<Models.Commit>> GetResultAsync()

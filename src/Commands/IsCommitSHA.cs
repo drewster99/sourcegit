@@ -7,7 +7,7 @@ namespace SourceGit.Commands
         public IsCommitSHA(string repo, string hash)
         {
             WorkingDirectory = repo;
-            Args = $"cat-file -t {hash}";
+            Args = $"cat-file -t {RequireSafeGitOperand(hash, nameof(hash))}";
         }
 
         public async Task<bool> GetResultAsync()

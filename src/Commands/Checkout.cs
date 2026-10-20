@@ -18,7 +18,7 @@ namespace SourceGit.Commands
             builder.Append("checkout --progress ");
             if (force)
                 builder.Append("--force ");
-            builder.Append(branch);
+            builder.Append(RequireSafeGitOperand(branch, nameof(branch)));
 
             Args = builder.ToString();
             return await ExecAsync().ConfigureAwait(false);
@@ -31,9 +31,9 @@ namespace SourceGit.Commands
             if (force)
                 builder.Append("--force ");
             builder.Append(allowOverwrite ? "-B " : "-b ");
-            builder.Append(branch);
+            builder.Append(RequireSafeGitOperand(branch, nameof(branch)));
             builder.Append(" ");
-            builder.Append(basedOn);
+            builder.Append(RequireSafeGitOperand(basedOn, nameof(basedOn)));
 
             Args = builder.ToString();
             return await ExecAsync().ConfigureAwait(false);
@@ -42,7 +42,7 @@ namespace SourceGit.Commands
         public async Task<bool> CommitAsync(string commitId, bool force)
         {
             var option = force ? "--force" : string.Empty;
-            Args = $"checkout {option} --detach --progress {commitId}";
+            Args = $"checkout {option} --detach --progress {RequireSafeGitOperand(commitId, nameof(commitId))}";
             return await ExecAsync().ConfigureAwait(false);
         }
 
@@ -69,7 +69,7 @@ namespace SourceGit.Commands
 
         public async Task<bool> FileWithRevisionAsync(string file, string revision)
         {
-            Args = $"checkout --no-overlay {revision} -- {file.Quoted()}";
+            Args = $"checkout --no-overlay {RequireSafeGitOperand(revision, nameof(revision))} -- {file.Quoted()}";
             return await ExecAsync().ConfigureAwait(false);
         }
 
@@ -78,7 +78,7 @@ namespace SourceGit.Commands
             var builder = new StringBuilder();
             builder
                 .Append("checkout --no-overlay ")
-                .Append(revision)
+                .Append(RequireSafeGitOperand(revision, nameof(revision)))
                 .Append(" --");
 
             foreach (var f in files)

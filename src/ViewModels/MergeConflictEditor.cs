@@ -96,7 +96,16 @@ namespace SourceGit.ViewModels
             var workingCopyPath = Path.Combine(_repo.FullPath, _filePath);
             var workingCopyContent = string.Empty;
             if (File.Exists(workingCopyPath))
-                workingCopyContent = File.ReadAllText(workingCopyPath);
+            {
+                // Preserve the file's encoding and refuse (rather than silently corrupt)
+                // a file that is not valid UTF-8, so resolving a conflict can never mangle
+                // a non-UTF-8 source file.
+                if (!TryDecodePreservingEncoding(File.ReadAllBytes(workingCopyPath), out workingCopyContent, out _outputEncoding))
+                {
+                    _error = "File is binary or not UTF-8; not supported.";
+                    return;
+                }
+            }
 
             if (workingCopyContent.IndexOf('\0', StringComparison.Ordinal) >= 0)
             {
@@ -195,9 +204,33 @@ namespace SourceGit.ViewModels
 
             try
             {
-                // Write merged content to file
+                // Write merged content to the working file atomically (write a sibling
+                // temp file, then replace), preserving the original encoding, so a failed
+                // write can never leave the real file truncated with markers removed.
                 var fullPath = Path.Combine(_repo.FullPath, _filePath);
-                await File.WriteAllTextAsync(fullPath, builder.ToString());
+                var tmpPath = $"{fullPath}.{Guid.NewGuid():N}.sourcegit-merge.tmp";
+
+                // Preserve the original file's Unix permissions (e.g. the executable bit
+                // of a script), which the temp+replace would otherwise drop.
+                UnixFileMode? mode = !OperatingSystem.IsWindows() && File.Exists(fullPath)
+                    ? File.GetUnixFileMode(fullPath)
+                    : null;
+
+                try
+                {
+                    await File.WriteAllTextAsync(tmpPath, builder.ToString(), _outputEncoding);
+                    // Apply the original mode to the temp file BEFORE the replace, so the
+                    // file has correct permissions atomically at the rename.
+                    if (!OperatingSystem.IsWindows() && mode is { } m)
+                        File.SetUnixFileMode(tmpPath, m);
+                    File.Move(tmpPath, fullPath, true);
+                }
+                catch
+                {
+                    if (File.Exists(tmpPath))
+                        File.Delete(tmpPath);
+                    throw;
+                }
 
                 // Stage the file
                 var pathSpecFile = Path.GetTempFileName();
@@ -218,6 +251,54 @@ namespace SourceGit.ViewModels
         public void ClearErrorMessage()
         {
             Error = string.Empty;
+        }
+
+        // Decodes bytes while remembering the encoding to write back with. A BOM-marked
+        // UTF-8/UTF-16 file keeps its encoding and BOM; an unmarked file must be valid
+        // UTF-8 (otherwise the caller refuses it) and is written back as UTF-8 without a
+        // BOM, matching the previous behaviour for ordinary UTF-8 files.
+        private static bool TryDecodePreservingEncoding(byte[] bytes, out string text, out Encoding encoding)
+        {
+            // Decode strictly (throw on invalid bytes) in every branch and refuse the
+            // file on failure, so neither a BOM-marked nor an unmarked file can be
+            // silently corrupted with U+FFFD replacement characters on save. The write
+            // encoding mirrors the detected one (preserving any BOM).
+            text = string.Empty;
+            encoding = new UTF8Encoding(false);
+
+            try
+            {
+                if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+                {
+                    text = new UTF8Encoding(false, true).GetString(bytes, 3, bytes.Length - 3);
+                    encoding = new UTF8Encoding(true);
+                    return true;
+                }
+
+                if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+                {
+                    text = new UnicodeEncoding(false, false, true).GetString(bytes, 2, bytes.Length - 2);
+                    encoding = new UnicodeEncoding(false, true);
+                    return true;
+                }
+
+                if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+                {
+                    text = new UnicodeEncoding(true, false, true).GetString(bytes, 2, bytes.Length - 2);
+                    encoding = new UnicodeEncoding(true, true);
+                    return true;
+                }
+
+                text = new UTF8Encoding(false, true).GetString(bytes);
+                encoding = new UTF8Encoding(false);
+                return true;
+            }
+            catch (DecoderFallbackException)
+            {
+                text = string.Empty;
+                encoding = new UTF8Encoding(false);
+                return false;
+            }
         }
 
         private void ParseOriginalContent(string content)
@@ -480,5 +561,6 @@ namespace SourceGit.ViewModels
         private Vector _scrollOffset = Vector.Zero;
         private Models.ConflictSelectedChunk _selectedChunk;
         private string _error = string.Empty;
+        private Encoding _outputEncoding = new UTF8Encoding(false);
     }
 }

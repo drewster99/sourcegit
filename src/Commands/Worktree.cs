@@ -67,19 +67,24 @@ namespace SourceGit.Commands
             if (string.IsNullOrEmpty(name))
                 Args = $"worktree add {fullpath.Quoted()}";
             else
-                Args = $"worktree add -b {name} {fullpath.Quoted()}";
+                Args = $"worktree add -b {RequireSafeGitOperand(name, nameof(name))} {fullpath.Quoted()}";
 
             return await ExecAsync().ConfigureAwait(false);
         }
 
         public async Task<bool> AddWithLocalBranchAsync(string fullpath, string localBranch)
         {
+            RequireSafeGitOperand(localBranch, nameof(localBranch));
             Args = $"worktree add -B {localBranch} {fullpath.Quoted()} {localBranch}";
             return await ExecAsync().ConfigureAwait(false);
         }
 
         public async Task<bool> AddWithRemoteBranchAsync(string fullpath, string name, string remoteBranch, bool tracking)
         {
+            RequireSafeGitOperand(remoteBranch, nameof(remoteBranch));
+            if (!string.IsNullOrEmpty(name))
+                RequireSafeGitOperand(name, nameof(name));
+
             var builder = new StringBuilder(1024);
             builder.Append("worktree add ");
 

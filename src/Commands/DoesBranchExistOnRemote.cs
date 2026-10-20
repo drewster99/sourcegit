@@ -9,7 +9,7 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             SSHKey = remote.PrivateSSHKey;
             RaiseError = false;
-            Args = $"ls-remote {remote.Name} {branch.Name}";
+            Args = $"ls-remote {RequireSafeGitOperand(remote.Name, nameof(remote))} {RequireSafeGitOperand(branch.Name, nameof(branch))}";
         }
 
         public async Task<bool> GetResultAsync()

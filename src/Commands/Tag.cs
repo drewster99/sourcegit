@@ -10,12 +10,13 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
-            _name = name;
+            // The tag name is repo/user-controlled; reject option-looking/unsafe values.
+            _name = RequireSafeGitOperand(name, nameof(name));
         }
 
         public async Task<bool> AddAsync(string basedOn)
         {
-            Args = $"tag --no-sign {_name} {basedOn}";
+            Args = $"tag --no-sign {_name} {RequireSafeGitOperand(basedOn, nameof(basedOn))}";
             return await ExecAsync().ConfigureAwait(false);
         }
 
@@ -27,7 +28,7 @@ namespace SourceGit.Commands
                 .Append(sign ? "--sign -a " : "--no-sign -a ")
                 .Append(_name)
                 .Append(' ')
-                .Append(basedOn);
+                .Append(RequireSafeGitOperand(basedOn, nameof(basedOn)));
 
             if (!string.IsNullOrEmpty(message))
             {

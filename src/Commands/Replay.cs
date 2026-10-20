@@ -10,6 +10,13 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             RaiseError = false;
+
+            // onto/range are repo-controlled revisions; reject option-looking values.
+            // range may be several space-separated revisions/ranges, so validate each.
+            RequireSafeGitOperand(onto, nameof(onto));
+            foreach (var rev in range.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))
+                RequireSafeGitOperand(rev, nameof(range));
+
             Args = $"replay --onto {onto} {range}";
         }
 

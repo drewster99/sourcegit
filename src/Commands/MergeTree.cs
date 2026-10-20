@@ -8,7 +8,8 @@ namespace SourceGit.Commands
         public MergeTree(string repo, string source, string dest)
         {
             WorkingDirectory = repo;
-            Args = $"merge-tree --write-tree {source} {dest}";
+            // source/dest are repo-controlled refs; reject option-looking values.
+            Args = $"merge-tree --write-tree {RequireSafeGitOperand(source, nameof(source))} {RequireSafeGitOperand(dest, nameof(dest))}";
         }
 
         public async Task<int> GetExitCodeAsync()

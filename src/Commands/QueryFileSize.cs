@@ -8,7 +8,7 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
-            Args = $"cat-file -s {revision}:{file.Quoted()}";
+            Args = $"cat-file -s {RequireSafeGitOperand(revision, nameof(revision))}:{file.Quoted()}";
         }
 
         public async Task<long> GetResultAsync()

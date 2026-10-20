@@ -17,6 +17,13 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
 
+            // start/end are repo-controlled revisions; validate when present ("-R" is an
+            // app-supplied flag used when start is empty).
+            if (!string.IsNullOrEmpty(start))
+                RequireSafeGitOperand(start, nameof(start));
+            if (!string.IsNullOrEmpty(end))
+                RequireSafeGitOperand(end, nameof(end));
+
             var based = string.IsNullOrEmpty(start) ? "-R" : start;
             Args = $"diff --name-status {based} {end}";
         }
@@ -25,6 +32,11 @@ namespace SourceGit.Commands
         {
             WorkingDirectory = repo;
             Context = repo;
+
+            if (!string.IsNullOrEmpty(start))
+                RequireSafeGitOperand(start, nameof(start));
+            if (!string.IsNullOrEmpty(end))
+                RequireSafeGitOperand(end, nameof(end));
 
             var based = string.IsNullOrEmpty(start) ? "-R" : start;
             Args = $"diff --name-status {based} {end} -- {path.Quoted()}";
