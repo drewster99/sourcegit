@@ -9,13 +9,16 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
+            RequireSafeGitOperand(remote.Name, nameof(remote));
 
             var builder = new StringBuilder(512);
             builder.Append("fetch --progress --verbose ");
             builder.Append(noTags ? "--no-tags " : "--tags ");
             if (force)
                 builder.Append("--force ");
-            builder.Append(remote.Name);
+            // --end-of-options: the remote name is repo-controlled; prevent a name
+            // beginning with '-' from being parsed as a git option (option injection).
+            builder.Append("--end-of-options ").Append(remote.Name);
 
             Args = builder.ToString();
         }
@@ -26,7 +29,8 @@ namespace SourceGit.Commands
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
             RaiseError = false;
-            Args = $"fetch --progress --verbose {remote.Name}";
+            RequireSafeGitOperand(remote.Name, nameof(remote));
+            Args = $"fetch --progress --verbose --end-of-options {remote.Name}";
         }
 
         public Fetch(string repo, Models.Remote remote, Models.Branch remoteBranch, Models.Branch local)
@@ -34,7 +38,10 @@ namespace SourceGit.Commands
             WorkingDirectory = repo;
             Context = repo;
             SSHKey = remote.PrivateSSHKey;
-            Args = $"fetch --progress --verbose {remote.Name} {remoteBranch.Name}:{local.Name}";
+            RequireSafeGitOperand(remote.Name, nameof(remote));
+            RequireSafeGitOperand(remoteBranch.Name, nameof(remoteBranch));
+            RequireSafeGitOperand(local.Name, nameof(local));
+            Args = $"fetch --progress --verbose --end-of-options {remote.Name} {remoteBranch.Name}:{local.Name}";
         }
     }
 }

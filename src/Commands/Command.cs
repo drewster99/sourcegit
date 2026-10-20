@@ -207,8 +207,11 @@ namespace SourceGit.Commands
                 start.Environment.Add("DISPLAY", "required");
 
             // If an SSH private key was provided, sets the environment.
+            // GIT_SSH_COMMAND is run by git through a shell, and the key path can come
+            // from an untrusted repo's `.git/config` (remote.<name>.sshkey), so it must
+            // be shell-quoted to prevent command injection.
             if (!start.Environment.ContainsKey("GIT_SSH_COMMAND") && !string.IsNullOrEmpty(SSHKey))
-                start.Environment.Add("GIT_SSH_COMMAND", $"ssh -i '{SSHKey}' -o AddKeysToAgent=yes");
+                start.Environment.Add("GIT_SSH_COMMAND", $"ssh -i {EscapeArgumentForShell(SSHKey)} -o AddKeysToAgent=yes");
 
             // Force the C locale on Unix, so that git's output (including fatal errors) can always be parsed.
             if (!OperatingSystem.IsWindows())
@@ -227,6 +230,54 @@ namespace SourceGit.Commands
         protected void RaiseException(string error)
         {
             Models.Notification.Send(Context, error, true);
+        }
+
+        // Wraps a value in POSIX single quotes so it is a single, literal argument when
+        // git passes GIT_SSH_COMMAND to a shell. Any embedded single quote is closed,
+        // escaped and reopened ('\''), so no metacharacter (including newlines) can break
+        // out. Git for Windows also interprets GIT_SSH_COMMAND with a POSIX shell.
+        internal static string EscapeArgumentForShell(string value)
+        {
+            return string.Concat("'", value.Replace("'", "'\\''", StringComparison.Ordinal), "'");
+        }
+
+        // True when a repo-controlled operand (remote name, ref) is safe to place on a
+        // git command line. The command line is one string that .NET re-parses into argv
+        // using MSVC rules, so the operand must survive that round-trip as a single token
+        // that is not an option:
+        //   - not starting with '-' (otherwise an option — and `git pull` forwards
+        //     operands to an internal `git fetch` even past --end-of-options);
+        //   - no space/tab (argv separators) that would split it into extra arguments;
+        //   - no double quote (toggles quoting, so e.g. `""--opt` would parse to `--opt`);
+        //   - no ASCII control characters.
+        // A backslash is allowed: it is only special in MSVC parsing immediately before a
+        // double quote, and double quotes are already rejected, so a backslash is always
+        // literal here. This keeps legitimate local-path remotes (e.g. a Windows
+        // `C:\repos\x.git` pushRemote) working. Only ASCII-significant characters are
+        // rejected, so valid Unicode remote/branch names (which git permits) are accepted.
+        internal static bool IsSafeGitOperand(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value[0] == '-')
+                return false;
+
+            foreach (var c in value)
+            {
+                if (c == ' ' || c == '\t' || c == '"' || c < 0x20 || c == 0x7F)
+                    return false;
+            }
+
+            return true;
+        }
+
+        // Throws when a repo-controlled operand is not safe to place on a git command
+        // line (see IsSafeGitOperand). A valid remote/branch name/ref always passes, so
+        // this only fires on hand-crafted, option-looking values.
+        internal static string RequireSafeGitOperand(string value, string paramName)
+        {
+            if (!IsSafeGitOperand(value))
+                throw new ArgumentException($"Refusing to run git with an unsafe operand: '{value}'", paramName);
+
+            return value;
         }
 
         private void HandleOutput(string line, List<string> errs)

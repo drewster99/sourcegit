@@ -57,6 +57,12 @@ namespace SourceGit.Commands
                 if (!urls.TryGetValue(name, out var url))
                     continue;
 
+                // Drop remotes whose name is option-looking or contains whitespace: such
+                // a name (only reachable via a hand-crafted .git/config) would otherwise
+                // be injected as a git option on fetch/pull/push command lines.
+                if (!Command.IsSafeGitOperand(name))
+                    continue;
+
                 var r = new Models.Remote()
                 {
                     Name = name,
