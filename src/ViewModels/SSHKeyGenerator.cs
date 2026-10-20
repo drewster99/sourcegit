@@ -131,6 +131,14 @@ namespace SourceGit.ViewModels
                 return null;
             }
 
+            // OpenSSH's passphrase reader truncates at 1023 bytes; reject longer values up
+            // front so a key is never encrypted with a silently-truncated passphrase.
+            if (System.Text.Encoding.UTF8.GetByteCount(passphrase) > 1023)
+            {
+                ErrorMessage = "The passphrase is too long (maximum 1023 bytes).";
+                return null;
+            }
+
             // Build the key in a temp location so a failure can never leave a key at the
             // final path, and keep the passphrase off the process command line (visible to
             // other local users via ps / /proc): generate unencrypted, then set the
@@ -204,14 +212,22 @@ namespace SourceGit.ViewModels
 
             try
             {
-                if (RunKeygen($"-q {type} -N \"\" -C {_email.Quoted()} -f {tmpKey.Quoted()}", null) != 0)
+                // Windows OpenSSH reads the passphrase from the console and ignores piped
+                // stdin, so pass it via -N there (reading another process's command line on
+                // Windows requires elevated privileges, unlike /proc on Unix). On Unix, keep
+                // the passphrase off the command line: generate unencrypted, then set it via
+                // `ssh-keygen -p` over stdin and verify the result is encrypted.
+                var setPassphraseViaArgv = OperatingSystem.IsWindows() || string.IsNullOrEmpty(passphrase);
+                var genPassphrase = setPassphraseViaArgv && !string.IsNullOrEmpty(passphrase) ? passphrase.Quoted() : "\"\"";
+
+                if (RunKeygen($"-q {type} -N {genPassphrase} -C {_email.Quoted()} -f {tmpKey.Quoted()}", null) != 0)
                 {
                     ErrorMessage = "Failed to generate SSH key.";
                     Cleanup();
                     return null;
                 }
 
-                if (!string.IsNullOrEmpty(passphrase))
+                if (!setPassphraseViaArgv)
                 {
                     // The freshly created key is unencrypted, so `ssh-keygen -p` asks only
                     // for the new passphrase and its confirmation (piped over stdin).

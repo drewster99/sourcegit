@@ -99,6 +99,12 @@ namespace SourceGit.ViewModels
                 catch (Exception e)
                 {
                     Native.OS.LogException(e);
+
+                    // Surface the failure (e.g. a rejected unsafe git operand) to the user
+                    // instead of only writing a crash log, and let the popup close.
+                    Models.Notification.Send(null, e.Message, true);
+                    dump.Cleanup();
+                    Popup = null;
                 }
 
                 dump.InProgress = false;
