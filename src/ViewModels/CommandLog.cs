@@ -35,7 +35,21 @@ namespace SourceGit.ViewModels
         {
             get
             {
-                return IsComplete ? _content : _builder.ToString();
+                if (IsComplete)
+                    return _content;
+
+                // Include not-yet-flushed buffered lines so a copy of the log is complete
+                // even before the next batched UI flush.
+                lock (_pendingLock)
+                {
+                    if (_pending.Count == 0)
+                        return _builder.ToString();
+
+                    var sb = new StringBuilder(_builder.ToString());
+                    foreach (var line in _pending)
+                        sb.AppendLine(line);
+                    return sb.ToString();
+                }
             }
         }
 
