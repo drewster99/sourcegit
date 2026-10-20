@@ -172,6 +172,14 @@ internal static class Program
         Check(new SourceGit.Models.Commit { SHA = "abc" }.GetFriendlyName() == "abc", "M8 Commit.GetFriendlyName handles short SHA");
         Check(new SourceGit.Models.Commit { SHA = "0123456789abcdef" }.GetFriendlyName() == "0123456789", "M8 Commit.GetFriendlyName truncates long SHA");
 
+        // Quoted(): MSVC-rule escaping so a crafted (repo-controlled) file name cannot
+        // break out of the quotes and inject an option after .NET re-parses the command.
+        Check(SourceGit.StringExtensions.Quoted("abc") == "\"abc\"", "Quoted plain");
+        Check(SourceGit.StringExtensions.Quoted("a\\") == "\"a\\\\\"", "Quoted doubles a trailing backslash");
+        Check(SourceGit.StringExtensions.Quoted("x\"y") == "\"x\\\"y\"", "Quoted escapes an embedded double quote");
+        // evil\" --output=x  ->  "evil\\\" --output=x"  (the \" is escaped, no break-out)
+        Check(SourceGit.StringExtensions.Quoted("evil\\\" --output=x") == "\"evil\\\\\\\" --output=x\"", "Quoted neutralizes backslash-quote injection");
+
         Console.WriteLine();
         Console.WriteLine(_failures == 0
             ? "All command-injection regression checks passed."
