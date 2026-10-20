@@ -100,7 +100,7 @@ internal static class Program
 
         // Each of these remote names would, after .NET argv parsing, become an option or
         // split into extra arguments. All must be rejected by fetch/pull/push.
-        foreach (var name in new[] { "--upload-pack=x", "origin x", "\"\"--upload-pack=evil", "a\"b", "a\\b", "-x" })
+        foreach (var name in new[] { "--upload-pack=x", "origin x", "\"\"--upload-pack=evil", "a\"b", "-x" })
         {
             var bad = new SourceGit.Models.Remote { Name = name, PrivateSSHKey = string.Empty };
             Check(Throws(() => new SourceGit.Commands.Fetch("/repo", bad, false, false)), $"C2 Fetch rejects «{name}»");
@@ -116,10 +116,14 @@ internal static class Program
             Check(Throws(() => new SourceGit.Commands.Push("/repo", bad, goodRemote, bad, false, false, false, false, false)), $"C2 Push rejects branch «{bn}»");
         }
 
-        // A valid Unicode name (incl. non-ASCII U+00A0, which .NET does not treat as a
-        // separator and git permits) must NOT be over-rejected.
-        var unicode = new SourceGit.Models.Remote { Name = "a b", PrivateSSHKey = string.Empty };
+        // Valid operands must NOT be over-rejected: a non-ASCII U+00A0 (git permits it;
+        // .NET does not treat it as a separator) and a Windows local-path pushRemote
+        // containing backslashes (safe because double quotes are rejected).
+        var unicode = new SourceGit.Models.Remote { Name = "a\u00A0b", PrivateSSHKey = string.Empty };
         Check(!Throws(() => new SourceGit.Commands.Fetch("/repo", unicode, false, false)), "C2 valid Unicode remote accepted");
+
+        var winPath = new SourceGit.Models.Remote { Name = @"C:\repos\dest.git", PrivateSSHKey = string.Empty };
+        Check(!Throws(() => new SourceGit.Commands.Fetch("/repo", winPath, false, false)), "C2 Windows local-path remote accepted");
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0

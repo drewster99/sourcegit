@@ -248,11 +248,13 @@ namespace SourceGit.Commands
         //   - not starting with '-' (otherwise an option — and `git pull` forwards
         //     operands to an internal `git fetch` even past --end-of-options);
         //   - no space/tab (argv separators) that would split it into extra arguments;
-        //   - no double quote or backslash (quote toggles / escapes that would let the
-        //     token change shape after parsing, e.g. `""--opt` -> `--opt`);
+        //   - no double quote (toggles quoting, so e.g. `""--opt` would parse to `--opt`);
         //   - no ASCII control characters.
-        // Only ASCII-significant characters are rejected, so valid Unicode remote/branch
-        // names (which git permits) are still accepted.
+        // A backslash is allowed: it is only special in MSVC parsing immediately before a
+        // double quote, and double quotes are already rejected, so a backslash is always
+        // literal here. This keeps legitimate local-path remotes (e.g. a Windows
+        // `C:\repos\x.git` pushRemote) working. Only ASCII-significant characters are
+        // rejected, so valid Unicode remote/branch names (which git permits) are accepted.
         internal static bool IsSafeGitOperand(string value)
         {
             if (string.IsNullOrEmpty(value) || value[0] == '-')
@@ -260,7 +262,7 @@ namespace SourceGit.Commands
 
             foreach (var c in value)
             {
-                if (c == ' ' || c == '\t' || c == '"' || c == '\\' || c < 0x20 || c == 0x7F)
+                if (c == ' ' || c == '\t' || c == '"' || c < 0x20 || c == 0x7F)
                     return false;
             }
 
