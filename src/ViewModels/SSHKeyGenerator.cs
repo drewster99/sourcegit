@@ -123,6 +123,14 @@ namespace SourceGit.ViewModels
             var keyFile = Path.Combine(dir, _name);
             var publicKeyFile = keyFile + ".pub";
 
+            // Never overwrite an existing key pair (ssh-keygen itself refuses without an
+            // interactive confirmation we cannot show); fail clearly instead.
+            if (File.Exists(keyFile) || File.Exists(publicKeyFile))
+            {
+                ErrorMessage = $"An SSH key named '{_name}' already exists.";
+                return null;
+            }
+
             // Build the key in a temp location so a failure can never leave a key at the
             // final path, and keep the passphrase off the process command line (visible to
             // other local users via ps / /proc): generate unencrypted, then set the
@@ -146,96 +154,89 @@ namespace SourceGit.ViewModels
                 }
             }
 
-            // ssh-keygen prefers an askpass helper / the controlling terminal; clear those
-            // hints so, with stdin redirected (not a tty), it reads the passphrase we pipe.
-            static void ForceStdinPassphrase(ProcessStartInfo info)
+            // Runs ssh-keygen with a bounded wait so a prompt we cannot answer can never
+            // hang the UI. When piping a passphrase over stdin, the askpass/terminal hints
+            // are cleared so (stdin not being a tty) ssh-keygen consumes the piped value.
+            // Returns the exit code, or null on timeout/launch failure.
+            int? RunKeygen(string args, string stdinText)
             {
-                info.Environment.Remove("DISPLAY");
-                info.Environment.Remove("WAYLAND_DISPLAY");
-                info.Environment.Remove("SSH_ASKPASS");
-                info.Environment.Remove("SSH_ASKPASS_REQUIRE");
+                var info = new ProcessStartInfo
+                {
+                    FileName = "ssh-keygen",
+                    Arguments = args,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardInput = stdinText != null,
+                };
+
+                if (stdinText != null)
+                {
+                    info.Environment.Remove("DISPLAY");
+                    info.Environment.Remove("WAYLAND_DISPLAY");
+                    info.Environment.Remove("SSH_ASKPASS");
+                    info.Environment.Remove("SSH_ASKPASS_REQUIRE");
+                }
+
+                using var proc = Process.Start(info);
+                if (stdinText != null)
+                {
+                    proc.StandardInput.Write(stdinText);
+                    proc.StandardInput.Close();
+                }
+
+                if (!proc.WaitForExit(60000))
+                {
+                    try
+                    {
+                        proc.Kill(true);
+                    }
+                    catch
+                    {
+                        // Ignore.
+                    }
+
+                    return null;
+                }
+
+                return proc.ExitCode;
             }
 
             try
             {
-                var gen = new ProcessStartInfo
+                if (RunKeygen($"-q {type} -N \"\" -C {_email.Quoted()} -f {tmpKey.Quoted()}", null) != 0)
                 {
-                    FileName = "ssh-keygen",
-                    Arguments = $"-q {type} -N \"\" -C {_email.Quoted()} -f {tmpKey.Quoted()}",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
+                    ErrorMessage = "Failed to generate SSH key.";
+                    Cleanup();
+                    return null;
+                }
 
-                using (var proc = Process.Start(gen))
+                if (!string.IsNullOrEmpty(passphrase))
                 {
-                    proc.WaitForExit();
-                    if (proc.ExitCode != 0)
+                    // The freshly created key is unencrypted, so `ssh-keygen -p` asks only
+                    // for the new passphrase and its confirmation (piped over stdin).
+                    if (RunKeygen($"-p -f {tmpKey.Quoted()}", $"{passphrase}\n{passphrase}\n") != 0)
                     {
-                        ErrorMessage = "Failed to generate SSH key.";
+                        ErrorMessage = "Failed to set SSH key passphrase.";
+                        Cleanup();
+                        return null;
+                    }
+
+                    // Confirm the key is really encrypted now: extracting the public key
+                    // with an empty passphrase must FAIL. If it succeeds, the passphrase
+                    // did not take (e.g. a platform where stdin was not consulted) — refuse
+                    // rather than publish an unencrypted key the user believes is protected.
+                    if (RunKeygen($"-y -P \"\" -f {tmpKey.Quoted()}", null) == 0)
+                    {
+                        ErrorMessage = "Failed to protect SSH key with the provided passphrase.";
                         Cleanup();
                         return null;
                     }
                 }
 
-                if (!string.IsNullOrEmpty(passphrase))
-                {
-                    var setPass = new ProcessStartInfo
-                    {
-                        FileName = "ssh-keygen",
-                        Arguments = $"-p -f {tmpKey.Quoted()}",
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardInput = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                    };
-                    ForceStdinPassphrase(setPass);
-
-                    using (var proc = Process.Start(setPass))
-                    {
-                        // Freshly created key is unencrypted, so ssh-keygen -p asks only
-                        // for the new passphrase and its confirmation.
-                        proc.StandardInput.WriteLine(passphrase);
-                        proc.StandardInput.WriteLine(passphrase);
-                        proc.StandardInput.Close();
-                        proc.WaitForExit();
-                        if (proc.ExitCode != 0)
-                        {
-                            ErrorMessage = "Failed to set SSH key passphrase.";
-                            Cleanup();
-                            return null;
-                        }
-                    }
-
-                    // Verify the key is really encrypted: extracting the public key with an
-                    // empty passphrase must FAIL. If it succeeds, the passphrase did not take
-                    // (e.g. a platform where stdin was not consulted) — refuse rather than
-                    // publish an unencrypted key the user believes is protected.
-                    var verify = new ProcessStartInfo
-                    {
-                        FileName = "ssh-keygen",
-                        Arguments = $"-y -P \"\" -f {tmpKey.Quoted()}",
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                    };
-                    ForceStdinPassphrase(verify);
-
-                    using (var proc = Process.Start(verify))
-                    {
-                        proc.WaitForExit();
-                        if (proc.ExitCode == 0)
-                        {
-                            ErrorMessage = "Failed to protect SSH key with the provided passphrase.";
-                            Cleanup();
-                            return null;
-                        }
-                    }
-                }
-
-                File.Move(tmpKey, keyFile, true);
-                File.Move(tmpPub, publicKeyFile, true);
+                // Publish. File.Move without overwrite throws if a pair appeared meanwhile,
+                // so an existing key is never clobbered.
+                File.Move(tmpKey, keyFile);
+                File.Move(tmpPub, publicKeyFile);
             }
             catch (Exception e)
             {
