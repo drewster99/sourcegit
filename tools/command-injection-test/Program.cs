@@ -180,6 +180,27 @@ internal static class Program
         // evil\" --output=x  ->  "evil\\\" --output=x"  (the \" is escaped, no break-out)
         Check(SourceGit.StringExtensions.Quoted("evil\\\" --output=x") == "\"evil\\\\\\\" --output=x\"", "Quoted neutralizes backslash-quote injection");
 
+        // #28: BuildHistoryParams must drop a repo-controlled history-filter pattern that
+        // would break argument quoting (a double quote — the only legal ref char that can),
+        // in BOTH the included and excluded builders, while keeping valid patterns —
+        // including a git-legal name that merely starts with '-'.
+        var uiIncl = new SourceGit.Models.RepositoryUIStates();
+        uiIncl.HistoryFilters.Add(new SourceGit.Models.HistoryFilter("refs/heads/a\"b", SourceGit.Models.FilterType.LocalBranch, SourceGit.Models.FilterMode.Included));
+        Check(!uiIncl.BuildHistoryParams("/nonexistent").Contains("a\"b", StringComparison.Ordinal), "#28 unsafe pattern skipped (included)");
+
+        var uiExcl = new SourceGit.Models.RepositoryUIStates();
+        uiExcl.HistoryFilters.Add(new SourceGit.Models.HistoryFilter("refs/heads/a\"b", SourceGit.Models.FilterType.LocalBranch, SourceGit.Models.FilterMode.Excluded));
+        Check(!uiExcl.BuildHistoryParams("/nonexistent").Contains("a\"b", StringComparison.Ordinal), "#28 unsafe pattern skipped (excluded)");
+
+        var uiSafe = new SourceGit.Models.RepositoryUIStates();
+        uiSafe.HistoryFilters.Add(new SourceGit.Models.HistoryFilter("refs/heads/main", SourceGit.Models.FilterType.LocalBranch, SourceGit.Models.FilterMode.Included));
+        Check(uiSafe.BuildHistoryParams("/nonexistent").Contains("refs/heads/main", StringComparison.Ordinal), "#28 valid pattern kept");
+
+        // Over-rejection guard: a git-legal tag named "-release" must NOT be dropped.
+        var uiDashTag = new SourceGit.Models.RepositoryUIStates();
+        uiDashTag.HistoryFilters.Add(new SourceGit.Models.HistoryFilter("-release", SourceGit.Models.FilterType.Tag, SourceGit.Models.FilterMode.Included));
+        Check(uiDashTag.BuildHistoryParams("/nonexistent").Contains("refs/tags/-release", StringComparison.Ordinal), "#28 leading-dash tag kept (not over-rejected)");
+
         Console.WriteLine();
         Console.WriteLine(_failures == 0
             ? "All command-injection regression checks passed."

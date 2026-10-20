@@ -429,10 +429,34 @@ namespace SourceGit.Models
             return builder.ToString();
         }
 
+        // A history-filter pattern is a repo-controlled ref name composed into the git log
+        // command line. git refnames cannot contain whitespace, control chars or a
+        // backslash, so a double quote is the only legal character that could break the
+        // argument quoting (the excluded form wraps the value in "..."). Reject such a
+        // pattern. A leading '-' is allowed: every composed form is either prefixed
+        // (refs/tags/<name>) or attached (--branches=<name>), so it never becomes a bare
+        // option — this keeps legitimate names like the tag "-release" working.
+        private static bool IsSafeHistoryFilterPattern(string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern))
+                return false;
+
+            foreach (var c in pattern)
+            {
+                if (c == '"' || c == '\\' || c <= ' ' || c == 0x7F)
+                    return false;
+            }
+
+            return true;
+        }
+
         private void BuildHistoryParamsForIncluded(StringBuilder builder)
         {
             foreach (var filter in HistoryFilters)
             {
+                if (!IsSafeHistoryFilterPattern(filter.Pattern))
+                    continue;
+
                 if (filter.Type == FilterType.LocalBranch)
                     builder.Append(filter.Pattern).Append(' ');
                 else if (filter.Type == FilterType.LocalBranchFolder)
@@ -453,6 +477,11 @@ namespace SourceGit.Models
             var excludedTags = new List<string>();
             foreach (var filter in HistoryFilters)
             {
+                // See IsSafeHistoryFilterPattern: drop a pattern that could break the
+                // quoting below and inject into the command line.
+                if (!IsSafeHistoryFilterPattern(filter.Pattern))
+                    continue;
+
                 if (filter.Type == FilterType.LocalBranch)
                     excludedBranches.Add($"--exclude=\"{filter.Pattern.AsSpan(11)}\" --decorate-refs-exclude=\"{filter.Pattern}\" ");
                 else if (filter.Type == FilterType.LocalBranchFolder)
